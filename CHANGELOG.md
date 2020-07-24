@@ -6,7 +6,7 @@ Here I will be writting the articles that I've read and a description about it.
 
 #### Sentiment Analysis with Contextual Embeddings and Self-Attention
 Authors: Katarzyna Biesialska, Magdalena Biesialska and Henryk Rybinski.  
-Release Date: 12.03.20
+Release Date: 12.03.2020
 
 The paper presents the Transformer-based Sentiment Analysis (TSA), a multilingual sentiment 
 classifier model that is comparable or even outperforms state-of-the-art models for languages like 
@@ -16,7 +16,7 @@ Polish and German. The model is based on the Transformer architecture with a att
 
 #### Copycat CNN: Stealing Knowledge by Persuading Confession with Random Non-Labeled Data
 Authors: Jacson Rodrigues, Rodrigo F. Berriel, ..., Alberto F. de Souza, Thiago Oliveira-Santos
-Release Date: 14.06.2020
+Release Date: 14.06.2018
 
 The paper investigates if a target black-box CNN can be copied by persuading it to confess its 
 knowledge through random non-labeled data. The hyphoteshis was evaluated in three problems: facial 
@@ -34,7 +34,7 @@ domain data and at least 98.6% using additional data from the problem domain.
 
 #### Defense against Adversarial Attacks Using High-Level Representation Guided Denoiser
 Authors: Fangzhou Liao, Ming Liang, Yinpeng Dong, Tianyu Pang, Xiaolin Hu, Jun Zhu
-Release Date: 08.05.2020
+Release Date: 08.05.2018
 
 The paper proposes a autoencoder network called High-Level Representation Guided Denoiser (HGD) as 
 a defense for image classification. This network acts as a defender for a target network. It 
