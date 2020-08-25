@@ -96,7 +96,7 @@ PROBLEMS:
 
 The papper proposes a method to steal functionality of black box models. It's kind of the same approach of the copycat attack. The main difference is that the output of the target network used to train the attacker is the softmax distribution, not just the argmax.
 
-The method was evaluated for different network architectures for the attacker and the target and was abble to steal a higher relative accuracy. The papper also tested two different sampling approaches: random and adaptive.
+The method was evaluated for different network architectures of target models and the attacker was abble to steal a higher relative accuracy. The papper also tested two different sampling approaches: random and adaptive.
 
 While performing the attack, the ImageNet was used. In the random sample strategy, the images are queried from ImageNet randomically and in the adaptive strategy, the model tries to identify the best images to steal functionality of the target model.
 
