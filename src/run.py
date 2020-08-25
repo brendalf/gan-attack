@@ -2,8 +2,8 @@ import sys
 import click
 import torch
 
-from .adversary.cli import adversary
-from .target.cli import target
+from models.adversary.cli import adversary
+from models.target.cli import target
 
 
 @click.group()

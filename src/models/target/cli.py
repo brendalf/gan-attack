@@ -2,8 +2,8 @@ import sys
 import click
 import torch
 
-from src.data.cifar_data import get_trainset, get_testset
-from .cifar10.custom import Cifar10
+from dataset.cifar_data import get_trainset, get_testset
+from models.target.cifar10.custom import Cifar10
 
 
 @click.command()

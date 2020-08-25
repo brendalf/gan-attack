@@ -2,7 +2,7 @@ import sys
 import click
 import torch
 
-from src.data.cifar_data import get_trainset, get_testset
+from dataset.cifar_data import get_trainset, get_testset
 
 
 @click.command()
