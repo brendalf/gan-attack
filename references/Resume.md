@@ -2,9 +2,7 @@
 
 Here I will be writting the articles that I've read and a description about it.
 
-## 30.03.20
-
-#### Sentiment Analysis with Contextual Embeddings and Self-Attention
+## Sentiment Analysis with Contextual Embeddings and Self-Attention
 Authors: Katarzyna Biesialska, Magdalena Biesialska and Henryk Rybinski.  
 Release Date: 12.03.2020
 
@@ -12,9 +10,7 @@ The paper presents the Transformer-based Sentiment Analysis (TSA), a multilingua
 classifier model that is comparable or even outperforms state-of-the-art models for languages like 
 Polish and German. The model is based on the Transformer architecture with a attention-based layer.
 
-## 19.07.2020
-
-#### Copycat CNN: Stealing Knowledge by Persuading Confession with Random Non-Labeled Data
+## Copycat CNN: Stealing Knowledge by Persuading Confession with Random Non-Labeled Data
 Authors: Jacson Rodrigues, Rodrigo F. Berriel, ..., Alberto F. de Souza, Thiago Oliveira-Santos
 Release Date: 14.06.2018
 
@@ -30,9 +26,7 @@ finetunning on 2.
 All copycat networks achieved at least 93.7% of performance of the original models with non-problem 
 domain data and at least 98.6% using additional data from the problem domain.
 
-## 21.07.2020
-
-#### Defense against Adversarial Attacks Using High-Level Representation Guided Denoiser
+## Defense against Adversarial Attacks Using High-Level Representation Guided Denoiser
 Authors: Fangzhou Liao, Ming Liang, Yinpeng Dong, Tianyu Pang, Xiaolin Hu, Jun Zhu
 Release Date: 08.05.2018
 
@@ -44,9 +38,8 @@ The autoencoder proposed is a modified version of DAE (denoiser autoencoder) wit
 It has lateral connections from encoder layers to their corresponding decoder layers and the 
 learning objective is the adversarial noise.
 
-## 24.07.2019
 
-#### Stealing Knowledge from Protected Deep Neural Networks Using Composite Unlabeled Data
+## Stealing Knowledge from Protected Deep Neural Networks Using Composite Unlabeled Data
 Authors: Itay Mosaf, Eli David, Nathan S. Netanyahu
 Release Date: 19.07.2019
 
@@ -63,9 +56,8 @@ classes.
 The method proposed is able to mimic 99% performance from the target network and watermarking
 defense aren't detectable.
 
-## 25.07.2020
 
-#### DAWN: Dynamic Adversarial Watermarking of Neural Networks
+## DAWN: Dynamic Adversarial Watermarking of Neural Networks
 Authors: Sebastian Szyller, Buse Gul Atli, Samuel Marchal, N. Asokan
 Release Date: 18.06.2020
 
@@ -90,9 +82,9 @@ PROBLEMS:
 * DAWN should be tested against standard augmentation and composite augmentation.
 * Use denoise autoencoder in replace to the traditional M function should get better results.
 
-## 28.07.2020
-
-#### Knockoff Nets: Stealing Functionality of Black-Box Models
+## Knockoff Nets: Stealing Functionality of Black-Box Models
+Authors: Tribhuvanesh Orekondy, Bernt Schiele, Mario Fritz
+Release Date: 06.12.2018
 
 The papper proposes a method to steal functionality of black box models. It's kind of the same approach of the copycat attack. The main difference is that the output of the target network used to train the attacker is the softmax distribution, not just the argmax.
 
@@ -101,3 +93,25 @@ The method was evaluated for different network architectures of target models an
 While performing the attack, the ImageNet was used. In the random sample strategy, the images are queried from ImageNet randomically and in the adaptive strategy, the model tries to identify the best images to steal functionality of the target model.
 
 The adaptive strategy was abble to steal the same amount of information that the random sampling, but with less images.
+
+## Data-Free Learning of Student Networks
+Authors: Hanting Chen, Yunhe Wang, Chang Xu, Zhaohui Yang, Chuanjian Liu, Boxin Shi, Chunjing Xu, Chao Xu, Qi Tian
+Release Date: 31.12.2019
+
+The papper proposes a novel for training student networks with GAN.
+Student network are understandable as more compact networks and the goal is to enable a network to be deployed in edge devices.
+
+The Data-Free Learning (DAFL) was abble to achieve 92.22% and 74.47% of accuracy using ResNet-18 without any training data on the CIFAR-10 and CIFAR-100 datasets. Winning against other state-of-the-art methods.
+
+One problem with this approach is that it uses the target model (teacher) as discriminator. So, applying this method for stealing knowledge of a network through a API is unavailable because of the number of API calls that will be necessary to train the generator.
+
+The DAFL generator can effectively generate synthetic data that reproduces the original training set distribution.
+
+Because the original dataset aren't available, training the discriminator to distinguish between real or fake from the original and the generator datasets is not posible. That's why the DALF uses a pre trained network as a fixed discriminator.
+
+The student network uses the argmax of the teacher softmax output.
+
+The generator loss is composed as three other losses:
+* One hot encode loss (argmax of softmax)
+* Feature maps activation loss (unavailable for api cases)
+* Information entropy loss (to ensure balanced class datasets)

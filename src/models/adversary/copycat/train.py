@@ -17,23 +17,11 @@ from image_list import ImageList
 from sys import argv, exit, stderr
 
 if __name__ == '__main__':
-    if len(argv) != 3:
-        print('Use: {} model_filename.pth image_list.txt'.format(argv[0]), file=stderr)
-        exit(1)
-    
-    ans = input(
-                'The cache property will apply transforms (resize, create tensor, etc.) on\n'
-                ' all images and store them into a single cache file.\n'
-                'It will replace the process of open and apply transforms on an image to only\n'
-                ' read the cache file, and create the tensor.\n'
-                'On my tests, the training time per batch reduced from 2h to 1h.\n'
-                'But it created a file with 32GB (data from ImageNet and Microsoft COCO).\n'
-                'Would you like to use cache? [y/N] '
-                )
+
 
     model_fn   = argv[1]
     imglist_fn = argv[2]
-    use_cache  = True if ans.upper().startswith('Y') else False
+    use_cache  = False
     batch_size = 32
     max_epochs = 10
     

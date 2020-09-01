@@ -11,14 +11,14 @@ from models.target.cifar10.custom import Cifar10
     '--model',
     default='Cifar10',
     type=click.Choice(['Cifar10'], case_sensitive=False),
-    help='The type of model we want to evaluate')
+    help='The type of model we want to train')
 @click.option(
-    '--out',
-    default='models/target/cifar_model.pth',
-    type=click.Path(),
-    help='Path to save trained model')
-def train(model, out):
-    if model == 'Cifar10':
+    '--arch',
+    default='Custom',
+    type=click.Choice(['Custom'], case_sensitive=False),
+    help='The type of model architecture we want to train')
+def train(model, arch):
+    if model == 'Cifar10' and arch == 'Custom':
         trainset = get_trainset(batch=32)
         cifar10 = Cifar10()
         cifar10.fit(trainset['loader'])
@@ -31,15 +31,19 @@ def train(model, out):
     type=click.Choice(['Cifar10'], case_sensitive=False),
     help='The type of model we want to evaluate')
 @click.option(
+    '--arch',
+    default='Custom',
+    type=click.Choice(['Custom'], case_sensitive=False),
+    help='The type of model architecture we want to evaluate')
+@click.option(
     '--path',
-    default='models/target/cifar_model.pth',
+    default='models/target/cifar10.custom.pth',
     type=click.Path(),
-    help='Path to trained model')
-def evaluate(model, path):
-    if model == 'Cifar10':
+    help='Path to the trained model')
+def evaluate(model, arch, path):
+    if model == 'Cifar10' and arch == 'Custom':
         testset = get_testset(batch=32)
-        cifar10 = Cifar10()
-        cifar10.load_state_dict(torch.load(path))
+        cifar10 = torch.load(path)
         cifar10.evaluate(testset['loader'])
 
 

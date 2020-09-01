@@ -93,12 +93,19 @@ class Cifar10(nn.Module):
         """
         correct = 0
         total = 0
+
+        #best device available
+        device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
+
+        print('Evaluating model...')
+        model = self.to(device)
         with torch.no_grad(): # turn off grad
-            self.eval() # network in evaluation mode
+            model.eval() # network in evaluation mode
 
             for data in tqdm.tqdm(dataloader):
-                images, labels = data
-                outputs = self(images)
+                inputs, labels = data
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
@@ -122,30 +129,33 @@ class Cifar10(nn.Module):
         #best device available
         device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
+        print('Training model...')
         model = self.to(device)
         for epoch in range(epochs):
             running_loss = 0.0
-            for i, data in enumerate(dataloader, 0):
-                # get the inputs; data is a list of [inputs, labels]
-                inputs, labels = data
-                inputs, labels = inputs.to(device), labels.to(device)
+            with tqdm.tqdm(dataloader) as tqdm_train:
+                for i, data in enumerate(tqdm_train):
+                    # get the inputs; data is a list of [inputs, labels]
+                    inputs, labels = data
+                    inputs, labels = inputs.to(device), labels.to(device)
 
-                # zero the parameter gradients
-                optimizer.zero_grad()
+                    # zero the parameter gradients
+                    optimizer.zero_grad()
 
-                # forward + backward + optimize
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
+                    # forward + backward + optimize
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                    loss.backward()
+                    optimizer.step()
 
-                # print statistics
-                running_loss += loss.item()
-            
-            print('[%d/%d] epochs -- loss: %.3f' %
-                (epoch + 1, epochs, running_loss))
+                    # print statistics
+                    running_loss += loss.item()
+                    if i % 200 == 0:
+                        tqdm_train.set_description('Epoch: {}/{} Loss: {:.3f}'.format(
+                            epoch+1, epochs, running_loss))
 
         print('Finished Training')
-        print('Saving model pth file')
-        PATH = 'models/cifar10/checkpoint.pth'
+
+        PATH = 'models/target/cifar10.custom.pth'
+        print(f'Saving model to {PATH}')
         torch.save(model, PATH)
