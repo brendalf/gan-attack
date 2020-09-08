@@ -1,50 +1,30 @@
-#torch
+import tqdm
 import torch
-import torchvision
-import torchvision.transforms as transforms
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-#general
-import matplotlib.pyplot as plt
-import numpy as np
-import random
-from tqdm import tqdm
-#local files:
-from model import CNN
-from image_list import ImageList
-#system
-from sys import argv, exit, stderr
+import torchvision.transforms as transforms
 
-if __name__ == '__main__':
-
-
-    model_fn   = argv[1]
-    imglist_fn = argv[2]
-    use_cache  = False
-    batch_size = 32
-    max_epochs = 10
-    
-    model = CNN()
-    
-    transform = transforms.Compose([ transforms.Resize( (32,32) ), transforms.ToTensor() ])
-    if use_cache:
-        dataset = ImageList(imglist_fn, color=True, transform=transform, return_filename=False, cache_filename='cache.kxe')
-    else:
-        dataset = ImageList(imglist_fn, color=True, transform=transform, return_filename=False)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
-
+def copycat_train(model, dataloader, output_path, epochs=10):
+    """
+    Trains a given network model with data for a number of epochs and
+    save in a default location
+    INPUT
+        model: the network pytorch model
+        dataloader: the train set dataloader
+        output_path: path to save the trained model
+        epochs (default=10): number of epochs
+    """
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=1e-4, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     
     device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
     print('Training model...')
     model = model.to(device)
-    for epoch in range(max_epochs):
+    for epoch in range(epochs):
         running_loss = 0.0
-        with tqdm(loader) as tqdm_loader:
-            for i, (inputs, labels) in enumerate(tqdm_loader):
+        with tqdm.tqdm(dataloader) as tqdm_loader:
+            for i, data in enumerate(tqdm_loader):
+                inputs, labels, _ = data
                 inputs, labels = inputs.to(device), labels.to(device)
 
                 optimizer.zero_grad()
@@ -55,13 +35,11 @@ if __name__ == '__main__':
 
                 running_loss += loss.item()
 
-                if i % 200 == 199:
+                if i % 200 == 0:
                     tqdm_loader.set_description('Epoch: {}/{} Loss: {:.3f}'.format(
-                        epoch+1, max_epochs, running_loss/200.))
-                    running_loss = 0.0
+                        epoch+1, epochs, running_loss))
 
-    print('Model trained.')
-    print('Saving the model to "{}"'.format(model_fn))
+    print('Finished Training')
 
-    torch.save(model.state_dict(), model_fn)
-
+    print(f'Saving model to {output_path}')
+    torch.save(model, output_path)

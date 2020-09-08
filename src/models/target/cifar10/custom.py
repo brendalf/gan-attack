@@ -1,16 +1,13 @@
-import tqdm
-import json
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-class Cifar10(nn.Module):
+class Cifar10Custom(nn.Module):
     """Cifar10 target model"""
 
     def __init__(self):
         """Cifar10 Builder."""
-        super(Cifar10, self).__init__()
+        super(Cifar10Custom, self).__init__()
 
         #Conv Layer Block 1:
         self.conv1_1  = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1)
@@ -83,79 +80,3 @@ class Cifar10(nn.Module):
         x = self.fc_layer(x)
 
         return x
-
-
-    def evaluate(self, dataloader):
-        """
-        Used the trained model to predict new data
-        INPUT
-            dataloader: torch dataloader
-        """
-        correct = 0
-        total = 0
-
-        #best device available
-        device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
-
-        print('Evaluating model...')
-        model = self.to(device)
-        with torch.no_grad(): # turn off grad
-            model.eval() # network in evaluation mode
-
-            for data in tqdm.tqdm(dataloader):
-                inputs, labels = data
-                inputs, labels = inputs.to(device), labels.to(device)
-                outputs = model(inputs)
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-
-        print('Accuracy: %d %%' % (100 * correct / total))
-
-
-    def fit(self, dataloader, epochs=10):
-        """
-        Trains a given network model with data for a number of epochs 
-        INPUT
-            dataloader: torch dataloader
-            epochs (default=10): number of epochs
-        OUTPUT
-            result: validation best performance
-        """
-        # create the optimizer and criterion
-        criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.SGD(self.parameters(), lr=0.001, momentum=0.9)
-
-        #best device available
-        device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
-
-        print('Training model...')
-        model = self.to(device)
-        for epoch in range(epochs):
-            running_loss = 0.0
-            with tqdm.tqdm(dataloader) as tqdm_train:
-                for i, data in enumerate(tqdm_train):
-                    # get the inputs; data is a list of [inputs, labels]
-                    inputs, labels = data
-                    inputs, labels = inputs.to(device), labels.to(device)
-
-                    # zero the parameter gradients
-                    optimizer.zero_grad()
-
-                    # forward + backward + optimize
-                    outputs = model(inputs)
-                    loss = criterion(outputs, labels)
-                    loss.backward()
-                    optimizer.step()
-
-                    # print statistics
-                    running_loss += loss.item()
-                    if i % 200 == 0:
-                        tqdm_train.set_description('Epoch: {}/{} Loss: {:.3f}'.format(
-                            epoch+1, epochs, running_loss))
-
-        print('Finished Training')
-
-        PATH = 'models/target/cifar10.custom.pth'
-        print(f'Saving model to {PATH}')
-        torch.save(model, PATH)

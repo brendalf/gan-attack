@@ -7,3 +7,4 @@ matplotlib
 seaborn
 Click==7.0
 tqdm
+opencv-python
