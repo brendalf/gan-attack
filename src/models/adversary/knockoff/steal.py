@@ -14,7 +14,7 @@ def knockoff_steal(model, loader, output_labels):
                 images = images.to(device)
                 outputs = model(images)
                 output_fd.writelines(
-                    ['{},{}\n'.format(img_fn, ','.join(labels.numpy().astype(str))) for img_fn, labels 
+                    ['{},{}\n'.format(img_fn, ','.join(labels.cpu().numpy().astype(str))) for img_fn, labels 
                         in zip(filenames, outputs)
                     ]
                 )

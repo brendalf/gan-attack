@@ -4,6 +4,7 @@ import torch
 import traceback
 
 from models.adversary.copycat import copycat_train, copycat_steal
+from models.adversary.knockoff import knockoff_train, knockoff_steal
 
 from models.target.cifar10 import Cifar10Custom
 
@@ -16,7 +17,12 @@ METHODS = {
     'copycat': {
         'steal': copycat_steal,
         'train': copycat_train,
-        'stolen_labels': 'data/stolen_labels/cifar10.custom.csv'
+        'stolen_labels': 'data/stolen_labels/copycat.csv'
+    },
+    'knockoff': {
+        'steal': knockoff_steal,
+        'train': knockoff_train,
+        'stolen_labels': 'data/stolen_labels/knockoff.csv'
     }
 }
 

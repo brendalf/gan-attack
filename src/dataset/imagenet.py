@@ -32,8 +32,11 @@ class ImagenetDataset(Dataset):
         image = ToPILImage()(image)
         classe = 0
 
-        if self.csv_file.shape[1] > 1:
+        if self.csv_file.shape[1] == 2:
             classe = self.csv_file.iloc[idx, 1]
+        elif self.csv_file.shape[1] > 2:
+            classe = self.csv_file.iloc[idx, 1:].tolist()
+        classe = torch.Tensor(classe)
 
         if self.transform:
             image = self.transform(image)

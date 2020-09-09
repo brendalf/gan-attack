@@ -1,7 +1,6 @@
 import tqdm
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
 
 def copycat_train(model, dataloader, output_path, epochs=10):
     """
