@@ -19,7 +19,7 @@ def knockoff_train(model, dataloader, output_path, epochs=10):
         epochs (default=10): number of epochs
     """
     criterion = soft_cross_entropy
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-5, momentum=0.9)
     
     device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
@@ -33,9 +33,11 @@ def knockoff_train(model, dataloader, output_path, epochs=10):
                 inputs, labels = inputs.to(device), labels.to(device)
 
                 optimizer.zero_grad()
+                #soft = nn.Softmax(dim=1)
+                #outputs = soft(model(inputs))
                 outputs = model(inputs)
-                
-                loss = criterion(outputs, labels.long())
+
+                loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
 
