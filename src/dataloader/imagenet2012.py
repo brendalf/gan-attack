@@ -5,8 +5,8 @@ from dataset.imagenet import ImagenetDataset
 
 def get_transform():
     transform = Compose([
-        Resize((32,32)),
-        ToTensor()        
+        ToTensor(),
+        Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))          
     ])
     
     return transform
