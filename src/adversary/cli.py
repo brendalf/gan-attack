@@ -100,7 +100,7 @@ def train(method, model, arch, batch, epochs):
     method = method.lower()
     model = model.lower()
     arch = arch.lower()
-
+    
     try:
         output_path = f"{MODELS[model]['path']}{model}.{arch}.stoled.pth"
         network = MODELS[model]['archs'][arch]()

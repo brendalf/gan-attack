@@ -14,7 +14,7 @@ def copycat_train(model, dataloader, output_path, epochs=10):
     """
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-    
+
     device = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
     print('Training model...')

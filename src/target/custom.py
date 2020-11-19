@@ -2,12 +2,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class Cifar10Custom(nn.Module):
-    """Cifar10 target model"""
+class CustomNN(nn.Module):
+    """CustomNN target model"""
 
     def __init__(self):
-        """Cifar10 Builder."""
-        super(Cifar10Custom, self).__init__()
+        """CustomNN Builder."""
+        super(CustomNN, self).__init__()
 
         #Conv Layer Block 1:
         self.conv1_1  = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1)
@@ -48,7 +48,7 @@ class Cifar10Custom(nn.Module):
 
     def forward(self, x, batch_norm=True):
         """Perform forward."""
-        
+
         #Conv Layer Block 1:
         x = self.conv1_1(x)
         if batch_norm: x = self.batch1_1(x)
@@ -73,10 +73,10 @@ class Cifar10Custom(nn.Module):
         x = self.conv3_2(x)
         x = self.relu3_2(x)
         x = self.maxp_3_1(x)
-        
+
         # flatten
         x = x.view(x.size(0), -1)
-        
+
         # fc layer
         x = self.fc_layer(x)
 

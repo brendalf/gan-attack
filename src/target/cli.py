@@ -3,9 +3,10 @@ import click
 import torch
 import traceback
 
-from models.target.cifar10 import Cifar10Custom
+from target.custom import Custom
 
-from dataloader.cifar10 import get_trainset, get_testset
+from dataloader.cifar10 import get_trainset as cifar10_trainset, get_testset as cifar10_testset
+from dataloader.stl10 import get_trainset as stl10_trainset, get_testset as stl10_testset
 
 from models.target.train import train_network
 from models.evaluate import evaluate_network
@@ -14,10 +15,18 @@ from models.evaluate import evaluate_network
 MODELS = {
     'cifar10': {
         'path': 'models/target/',
-        'trainset': get_trainset,
-        'testset': get_testset,
+        'trainset': cifar10_trainset,
+        'testset': cifar10_testset,
         'archs': {
-            'custom': Cifar10Custom
+            'custom': Custom
+        }
+    },
+    'stl10': {
+        'path': 'models/target/',
+        'trainset': stl10_trainset,
+        'testset': stl10_testset,
+        'archs': {
+            'custom': Custom
         }
     }
 }
@@ -27,7 +36,7 @@ MODELS = {
 @click.option(
     '--model',
     default='cifar10',
-    type=click.Choice(['cifar10'], case_sensitive=True),
+    type=click.Choice(['cifar10', 'stl10'], case_sensitive=True),
     help='The type of model we want to train')
 @click.option(
     '--arch',
@@ -47,7 +56,7 @@ MODELS = {
 def train(model, arch, batch, epochs):
     model = model.lower()
     arch = arch.lower()
-    
+
     try:
         output_path = f"{MODELS[model]['path']}{model}.{arch}.pth"
         trainset = MODELS[model]['trainset'](batch=batch)
@@ -63,7 +72,7 @@ def train(model, arch, batch, epochs):
 @click.option(
     '--model',
     default='cifar10',
-    type=click.Choice(['cifar10'], case_sensitive=True),
+    type=click.Choice(['cifar10', 'stl10'], case_sensitive=True),
     help='The type of model we want to evaluate')
 @click.option(
     '--arch',
@@ -78,7 +87,7 @@ def train(model, arch, batch, epochs):
 def evaluate(model, arch, batch):
     model = model.lower()
     arch = arch.lower()
-    
+
     try:
         saved_path = f"{MODELS[model]['path']}{model}.{arch}.pth"
         testset = MODELS[model]['testset'](batch=batch)

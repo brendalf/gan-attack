@@ -21,11 +21,10 @@ def evaluate_network(model, dataloader):
     with torch.no_grad(): # turn off grad
         model.eval() # network in evaluation mode
 
-        for data in tqdm.tqdm(dataloader):
-            inputs, labels = data
+        for inputs, labels in tqdm.tqdm(dataloader):
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
-            _, predicted = torch.max(outputs.data, 1)
+            _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
