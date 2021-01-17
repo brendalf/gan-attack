@@ -104,3 +104,5 @@ ENV/
 data/
 models/
 notebooks/runs/
+
+logs/
