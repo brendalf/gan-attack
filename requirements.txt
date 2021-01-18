@@ -6,6 +6,5 @@ scikit-learn==0.23
 scikit-image
 matplotlib
 seaborn
-Click==7.0
 tqdm
 opencv-python
