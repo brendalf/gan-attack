@@ -10,6 +10,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR
 
 from torchvision.utils import make_grid
 from torchvision.datasets import ImageFolder
@@ -18,10 +19,9 @@ from torchvision.transforms import Compose, ToTensor, CenterCrop, Normalize, Res
 from datetime import datetime
 
 from utils import SquashTransform
-# from models.vgg19 import VGG19
+from experiment import generate_experiment_id
 from models.generator import GeneratorDCGAN as Generator
 from models.discriminator import DiscriminatorDCGAN as Discriminator
-# from fid import FID
 
 
 # def define_target():
@@ -48,18 +48,22 @@ def define_discriminator():
     model = Discriminator().to(DEVICE)
     model.apply(weights_init)
 
-    optim = Adam(model.parameters(), lr=LR, betas=(0.5, 0.999))
+    optim = Adam(model.parameters(), lr=LR, amsgrad=True)
+    #lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
+    lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
-    return model.to(DEVICE), optim
+    return model, optim, lrdecay
 
 
 def define_generator():
     model = Generator(LATENT_DIM).to(DEVICE)
     model.apply(weights_init)
 
-    optim = Adam(model.parameters(), lr=LR, betas=(0.5, 0.999))
+    optim = Adam(model.parameters(), lr=LR, amsgrad=True)
+    #lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
+    lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
-    return model, optim
+    return model, optim, lrdecay
 
 
 def load_real_samples():
@@ -106,22 +110,58 @@ def generate_test(g_model):
     return grid
 
 
-def summarize_performance(epoch, sw, d_loss, g_loss, d_x, d_g_z, fid, grid):
+def summarize_performance(epoch, sw, d_loss, g_loss, d_x, d_g_z, g_lr, d_lr, grid):
     sw.add_scalar(f'GAN/D Loss', d_loss, epoch)
     sw.add_scalar(f'GAN/G Loss', g_loss, epoch)
 
     sw.add_scalar(f'GAN/D(x)', d_x, epoch)
     sw.add_scalar(f'GAN/D(G(z))', d_g_z, epoch)
-    sw.add_scalar(f'GAN/FID', fid, epoch)
+
+    sw.add_scalar(f'GAN/G LR', g_lr, epoch)
+    sw.add_scalar(f'GAN/D LR', d_lr, epoch)
 
     sw.add_image(f'GAN/Output', grid, epoch)
 
 
+def calculate_fid(g_model, d_model, loader, sw, epoch):
+    # generate fake samples
+    fake_images = g_model(generate_latent_points(LATENT_DIM, 32))
+    #fake_images.to(torch.device('cpu')).detach().numpy()
+
+    # load real samples
+    b1 = next(iter(loader))
+    b2 = next(iter(loader))
+    real_images = torch.cat((b1[0], b2[0]), 0)
+    #real_images.to(torch.device('cpu')).detach().numpy()
+    real_images.to(DEVICE)
+    del b1, b2
+
+    # saving space in the gpu for loading inception v3
+    g_model = g_model.to(torch.device('cpu'))
+    d_model = d_model.to(torch.device('cpu'))
+
+    # load model
+    from fid_pytorch import FID
+    fid_model = FID()
+
+    # calculate FID
+    fid = fid_model.calculate_fid(real_images, fake_images)
+
+    # save FID
+    sw.add_scalar(f'GAN/FID', fid, epoch)
+
+    # clean memory
+    del fid_model, real_images, fake_images
+
+    # put models back on GPU
+    g_model = g_model.to(DEVICE)
+    d_model = d_model.to(DEVICE)
+
+
 def train_gan(sw, dataloader):
-    d_model, d_optim = define_discriminator()
-    g_model, g_optim = define_generator()
+    d_model, d_optim, d_lrdecay = define_discriminator()
+    g_model, g_optim, g_lrdecay = define_generator()
     criterion = nn.BCELoss()
-    # fid_model = FID()
 
     img_list = []
     G_losses = []
@@ -129,7 +169,6 @@ def train_gan(sw, dataloader):
 
     for epoch in range(EPOCHS):
         D_x, D_G_z1, D_G_z2 = [], [], []
-        fid = 0 # []
 
         for i, data in enumerate(dataloader):
             ############################
@@ -185,32 +224,35 @@ def train_gan(sw, dataloader):
             # Update G
             g_optim.step()
 
-            real_images = real_images.to(torch.device('cpu')).detach().numpy()
-            fake = fake.to(torch.device('cpu')).detach().numpy()
-            # fid.append(fid_model.calculate_fid(real_images, fake))
+        # Learning rate decay
+        d_lrdecay.step()
+        g_lrdecay.step()
 
         # Calculate the mean
         D_x = np.mean(D_x)
         D_G_z1 = np.mean(D_G_z1)
         D_G_z2 = np.mean(D_G_z2)
-        # fid = np.mean(fid)
 
         # Output training stats
-        print('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f\tFID: %.4f'
-            % (epoch+1, EPOCHS, errD.item(), errG.item(), D_x, D_G_z1, D_G_z2, fid))
+        print('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+            % (epoch+1, EPOCHS, errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
         # Save Losses for plotting later
         G_losses.append(errG.item())
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        if (epoch) % 10 == 0:
+        if epoch % 10 == 0:
             summarize_performance(
                 epoch, sw,
                 errD.item(), errG.item(), 
-                D_x, D_G_z2, fid,
+                D_x, D_G_z2,
+                g_lrdecay.get_last_lr()[-1], d_lrdecay.get_last_lr()[-1],
                 generate_test(g_model)
             )
+
+        if epoch % 50 == 0:
+            calculate_fid(g_model, d_model, dataloader, sw, epoch)
 
     torch.save(g_model, f'models/adversary/g_exp{EXPERIMENT_ID}.pth')
     torch.save(d_model, f'models/adversary/d_exp{EXPERIMENT_ID}.pth')
@@ -230,7 +272,7 @@ WORKERS = 4
 BATCH_SIZE = 16
 IMAGE_SIZE = 64
 LATENT_DIM = 100
-LR = 0.00005
+LR = 0.0005
 EPOCHS = 10000
 
 #HALF_BATCH = BATCH_SIZE // 2
@@ -243,7 +285,8 @@ FIXED_NOISE = generate_latent_points(LATENT_DIM, 10)
 REAL_LABEL = 1
 FAKE_LABEL = 0
 
-EXPERIMENT_ID = len(os.listdir('logs/experiments')) + 1
+#EXPERIMENT_ID = len(os.listdir('logs/experiments')) + 1
+EXPERIMENT_ID = generate_experiment_id()
 
 print(f'#### Experiment {EXPERIMENT_ID} ####')
 print(f'Date: {datetime.now().strftime("%Y%m%d_%H-%M")}')
@@ -259,16 +302,18 @@ print(f'> Latent Dimension: {LATENT_DIM}')
 print(f'> Device: {DEVICE}')
 
 print('\nGenerator')
-sample_g_model, sample_g_optim = define_generator()
+sample_g_model, sample_g_optim, sample_g_lrdecay = define_generator()
 print(sample_g_model)
 print(sample_g_optim)
+print(sample_g_lrdecay.__class__.__name__)
 
 print('\nDiscriminator')
-sample_d_model, sample_d_optim = define_discriminator()
+sample_d_model, sample_d_optim, sample_d_lrdecay = define_discriminator()
 print(sample_d_model)
 print(sample_d_optim)
+print(sample_d_lrdecay.__class__.__name__)
 
-del sample_g_model, sample_d_model, sample_g_optim, sample_d_optim
+del sample_g_model, sample_d_model, sample_g_optim, sample_d_optim, sample_g_lrdecay, sample_d_lrdecay
 
 # for n_class in range(10):
 #     print(f'\n ## Classe {n_class}')
