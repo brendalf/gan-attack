@@ -6,10 +6,12 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 
+from tqdm import tqdm
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR
 
 from torchvision.utils import make_grid
 from torchvision.datasets import ImageFolder
@@ -17,21 +19,11 @@ from torchvision.transforms import Compose, ToTensor, CenterCrop, Normalize, Res
 
 from datetime import datetime
 
-from utils import SquashTransform
-# from models.vgg19 import VGG19
+from utils import SquashTransform, generate_latent_points
+from experiment import ExperimentLog, generate_experiment_id
 from models.generator import GeneratorDCGAN as Generator
 from models.discriminator import DiscriminatorDCGAN as Discriminator
 
-
-# def define_target():
-#     model = VGG19()
-
-#     if device == 'cuda':
-#         cudnn.benchmark = True
-
-#     model = model.to(DEVICE)
-
-#     return model
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -46,18 +38,22 @@ def define_discriminator():
     model = Discriminator().to(DEVICE)
     model.apply(weights_init)
 
-    optim = Adam(model.parameters(), lr=LR, betas=(0.5, 0.999))
+    optim = Adam(model.parameters(), lr=LR*0.5, amsgrad=True)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=0.999)
+    #lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
-    return model.to(DEVICE), optim
+    return model, optim, lrdecay
 
 
 def define_generator():
     model = Generator(LATENT_DIM).to(DEVICE)
     model.apply(weights_init)
 
-    optim = Adam(model.parameters(), lr=LR, betas=(0.5, 0.999))
+    optim = Adam(model.parameters(), lr=LR, amsgrad=True)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=0.999)
+    #lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
-    return model, optim
+    return model, optim, lrdecay
 
 
 def load_real_samples(n_class):
@@ -67,7 +63,7 @@ def load_real_samples(n_class):
             Resize(IMAGE_SIZE),
             CenterCrop(IMAGE_SIZE),
             ToTensor(),
-            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            SquashTransform(),
         ])
     )
 
@@ -82,10 +78,6 @@ def load_real_samples(n_class):
     )
 
     return loader
-
-
-def generate_latent_points(latent_dim, n_samples):
-    return torch.randn(n_samples, latent_dim, 1, 1, device=DEVICE)
 
 
 def generate_test(g_model):
@@ -103,25 +95,65 @@ def generate_test(g_model):
     return grid
 
 
-def summarize_performance(epoch, sw, d_loss, g_loss, 
-                        d_x, d_g_z, grid):
-    sw.add_scalar(f'GAN/D Loss', d_loss, epoch)
-    sw.add_scalar(f'GAN/G Loss', g_loss, epoch)
+def summarize_performance(epoch, sw, n_class, d_loss, g_loss, d_x, d_g_z, g_lr, d_lr, grid):
+    sw.add_scalar(f'GAN {n_class}/D Loss', d_loss, epoch)
+    sw.add_scalar(f'GAN {n_class}/G Loss', g_loss, epoch)
 
-    sw.add_scalar(f'GAN/D(x)', d_x, epoch)
-    sw.add_scalar(f'GAN/D(G(z))', d_g_z, epoch)
+    sw.add_scalar(f'GAN {n_class}/D(x)', d_x, epoch)
+    sw.add_scalar(f'GAN {n_class}/D(G(z))', d_g_z, epoch)
 
-    sw.add_image(f'GAN/Output', grid, epoch)
+    sw.add_scalar(f'GAN {n_class}/G LR', g_lr, epoch)
+    sw.add_scalar(f'GAN {n_class}/D LR', d_lr, epoch)
+
+    sw.add_image(f'GAN {n_class}/Output', grid, epoch)
+
+
+def calculate_fid(g_model, d_model, loader, sw, epoch, n_class):
+    # generate fake samples
+    fake_images = g_model(generate_latent_points(LATENT_DIM, 32, DEVICE))
+    #fake_images = g_model(FIXED_NOISE)
+
+    # load real samples
+    b1 = next(iter(loader))
+    b2 = next(iter(loader))
+    real_images = torch.cat((b1[0], b2[0]), 0)
+    real_images.to(DEVICE)
+    del b1, b2
+
+    # saving space in the gpu for loading inception v3
+    g_model = g_model.to(torch.device('cpu'))
+    d_model = d_model.to(torch.device('cpu'))
+
+    # load model
+    from fid_pytorch import FID
+    fid_model = FID()
+
+    # calculate FID
+    fid = fid_model.calculate_fid(real_images, fake_images)
+
+    # save FID
+    sw.add_scalar(f'GAN {n_class}/FID', fid, epoch)
+
+    # clean memory
+    del fid_model, real_images, fake_images
+
+    # put models back on GPU
+    g_model = g_model.to(DEVICE)
+    d_model = d_model.to(DEVICE)
+
+    return fid
 
 
 def train_gan(sw, n_class, dataloader):
-    d_model, d_optim = define_discriminator()
-    g_model, g_optim = define_generator()
+    d_model, d_optim, d_lrdecay = define_discriminator()
+    g_model, g_optim, g_lrdecay = define_generator()
     criterion = nn.BCELoss()
 
     img_list = []
     G_losses = []
     D_losses = []
+
+    min_fid = np.inf
 
     for epoch in range(EPOCHS):
         D_x, D_G_z1, D_G_z2 = [], [], []
@@ -146,7 +178,7 @@ def train_gan(sw, n_class, dataloader):
 
             ## Train with all-fake batch
             # Generate batch of latent vectors
-            noise = generate_latent_points(LATENT_DIM, mini_batch_size)
+            noise = generate_latent_points(LATENT_DIM, mini_batch_size, DEVICE)
             # Generate fake image batch with G
             fake = g_model(noise)
             label.fill_(FAKE_LABEL)
@@ -180,13 +212,17 @@ def train_gan(sw, n_class, dataloader):
             # Update G
             g_optim.step()
 
+        # Learning rate decay
+        d_lrdecay.step()
+        g_lrdecay.step()
+
         # Calculate the mean
         D_x = np.mean(D_x)
         D_G_z1 = np.mean(D_G_z1)
         D_G_z2 = np.mean(D_G_z2)
 
         # Output training stats
-        print('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+        LOGGER.write('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
             % (epoch+1, EPOCHS, errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
         # Save Losses for plotting later
@@ -194,81 +230,94 @@ def train_gan(sw, n_class, dataloader):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        if (epoch) % 10 == 0:
+        fid = min_fid
+        if epoch % 50 == 0:
             summarize_performance(
                 epoch, sw, n_class,
                 errD.item(), errG.item(), 
-                D_x, D_G_z2,
+                D_x, D_G_z1,
+                g_lrdecay.get_last_lr()[-1], d_lrdecay.get_last_lr()[-1],
                 generate_test(g_model)
             )
 
-    torch.save(g_model, f'models/adversary/g_exp{EXPERIMENT_ID}_class{n_class}.pth')
-    torch.save(d_model, f'models/adversary/d_exp{EXPERIMENT_ID}_class{n_class}.pth')
+            #if epoch % 50 == 0:
+            fid = calculate_fid(g_model, d_model, dataloader, sw, epoch, n_class)
 
+        if fid < min_fid:
+            min_fid = fid
+
+            torch.save(g_model, f'models/adversary/g_exp{EXPERIMENT_ID}_class{n_class}.pth')
+            torch.save(d_model, f'models/adversary/d_exp{EXPERIMENT_ID}_class{n_class}.pth')
+
+
+# Generate the next experiment ID
+EXPERIMENT_ID = generate_experiment_id()
+
+# Create the experiment folder
+EXPERIMENT_PATH = f'logs/experiments/experiment_{EXPERIMENT_ID}'
+
+if not os.path.exists(EXPERIMENT_PATH):
+    os.mkdir(EXPERIMENT_PATH)
+
+# Get the experiment log
+LOGGER = ExperimentLog(f"{EXPERIMENT_PATH}/log")
 
 # Set random seed for reproducibility
-manualSeed = 999
-#manualSeed = random.randint(1, 10000) # use if you want new results
-print("Random Seed: ", manualSeed)
+manualSeed = 999 
+# manualSeed = random.randint(1, 10000) # use if you want new results
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
+LOGGER.write(f"Random Seed: {manualSeed}")
 
+# Get best available device
 DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
-
+# Parameters
 DATAROOT = 'data/cifar10_attack_labeled_vgg/'
 WORKERS = 4
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 IMAGE_SIZE = 64
 LATENT_DIM = 100
-LR = 0.0002
-EPOCHS = 500
+LR = 0.0005
+EPOCHS = 1500
 
-#HALF_BATCH = BATCH_SIZE // 2
-#STEPS = 5000 // BATCH_SIZE
-
-#ZEROS = torch.zeros(HALF_BATCH, 1).to(DEVICE)
-#ONES = torch.ones(HALF_BATCH, 1).to(DEVICE)
-
-FIXED_NOISE = generate_latent_points(LATENT_DIM, 10)
+FIXED_NOISE = generate_latent_points(LATENT_DIM, 20, DEVICE)
 REAL_LABEL = 1
 FAKE_LABEL = 0
 
-EXPERIMENT_ID = len(os.listdir('logs/experiments')) + 1
+LOGGER.write(f'#### Experiment {EXPERIMENT_ID} ####')
+LOGGER.write(f'Date: {datetime.now().strftime("%Y%m%d_%H-%M")}')
 
-print(f'#### Experiment {EXPERIMENT_ID} ####')
-print(f'Date: {datetime.now().strftime("%Y%m%d_%H-%M")}')
+LOGGER.write('\nHiperparametros')
+LOGGER.write(f'> Epochs: {EPOCHS}')
+LOGGER.write(f'> Learning Rate: {LR}')
+LOGGER.write(f'> Image Size: {IMAGE_SIZE}')
+LOGGER.write(f'> Batch Size: {BATCH_SIZE}')
+LOGGER.write(f'> Latent Dimension: {LATENT_DIM}')
+LOGGER.write(f'> Device: {DEVICE}')
 
-print('\nHiperparametros')
-print(f'> Epochs: {EPOCHS}')
-print(f'> Learning Rate: {LR}')
-print(f'> Image Size: {IMAGE_SIZE}')
-print(f'> Batch Size: {BATCH_SIZE}')
-#print(f'> Half Batch Size: {HALF_BATCH}')
-#print(f'> Steps: {STEPS}')
-print(f'> Latent Dimension: {LATENT_DIM}')
-print(f'> Device: {DEVICE}')
+LOGGER.write('\nGenerator')
+sample_g_model, sample_g_optim, sample_g_lrdecay = define_generator()
+LOGGER.write(sample_g_model)
+LOGGER.write(sample_g_optim)
+LOGGER.write(sample_g_lrdecay.__class__.__name__)
 
-print('\nGenerator')
-sample_g_model, sample_g_optim = define_generator()
-print(sample_g_model)
-print(sample_g_optim)
+LOGGER.write('\nDiscriminator')
+sample_d_model, sample_d_optim, sample_d_lrdecay = define_discriminator()
+LOGGER.write(sample_d_model)
+LOGGER.write(sample_d_optim)
+LOGGER.write(sample_d_lrdecay.__class__.__name__)
 
-print('\nDiscriminator')
-sample_d_model, sample_d_optim = define_discriminator()
-print(sample_d_model)
-print(sample_d_optim)
+del sample_g_model, sample_d_model, sample_g_optim, sample_d_optim, sample_g_lrdecay, sample_d_lrdecay
 
-del sample_g_model, sample_d_model, sample_g_optim, sample_d_optim
-
+LOGGER.write("Starting GAN attack")
 for n_class in range(10):
-    print(f'\n ## Classe {n_class}')
+    LOGGER.write(f'\n ## Classe {n_class}')
 
     loader = load_real_samples(n_class)
 
-    print(f'> Dataset: {len(loader.dataset)} samples')
+    LOGGER.write(f'> Dataset: {len(loader.dataset)} samples')
 
-    sw = SummaryWriter(f'logs/experiments/experiment_{EXPERIMENT_ID}')
+    sw = SummaryWriter(EXPERIMENT_PATH)
 
     train_gan(sw, n_class, loader)
-    # train_gan(sw, loader)

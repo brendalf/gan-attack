@@ -18,21 +18,10 @@ from torchvision.transforms import Compose, ToTensor, CenterCrop, Normalize, Res
 
 from datetime import datetime
 
-from utils import SquashTransform
-from experiment import generate_experiment_id
+from utils import SquashTransform, generate_latent_points
+from experiment import ExperimentLog, generate_experiment_id
 from models.generator import GeneratorDCGAN as Generator
 from models.discriminator import DiscriminatorDCGAN as Discriminator
-
-
-# def define_target():
-#     model = VGG19()
-
-#     if device == 'cuda':
-#         cudnn.benchmark = True
-
-#     model = model.to(DEVICE)
-
-#     return model
 
 
 def weights_init(m):
@@ -49,8 +38,8 @@ def define_discriminator():
     model.apply(weights_init)
 
     optim = Adam(model.parameters(), lr=LR, amsgrad=True)
-    #lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
-    lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
+    #lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
     return model, optim, lrdecay
 
@@ -60,8 +49,8 @@ def define_generator():
     model.apply(weights_init)
 
     optim = Adam(model.parameters(), lr=LR, amsgrad=True)
-    #lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
-    lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
+    #lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
     return model, optim, lrdecay
 
@@ -77,11 +66,7 @@ def load_real_samples():
         ])
     )
 
-    #idx = np.where(np.array(X.targets) == n_class)[0]
-    #X_class = Subset(X, idx)
-
     loader = DataLoader(
-        #X_class,
         X,
         batch_size=BATCH_SIZE,
         shuffle=True,
@@ -89,10 +74,6 @@ def load_real_samples():
     )
 
     return loader
-
-
-def generate_latent_points(latent_dim, n_samples):
-    return torch.randn(n_samples, latent_dim, 1, 1, device=DEVICE)
 
 
 def generate_test(g_model):
@@ -125,7 +106,7 @@ def summarize_performance(epoch, sw, d_loss, g_loss, d_x, d_g_z, g_lr, d_lr, gri
 
 def calculate_fid(g_model, d_model, loader, sw, epoch):
     # generate fake samples
-    fake_images = g_model(generate_latent_points(LATENT_DIM, 32))
+    fake_images = g_model(generate_latent_points(LATENT_DIM, 32, DEVICE))
     #fake_images.to(torch.device('cpu')).detach().numpy()
 
     # load real samples
@@ -190,7 +171,7 @@ def train_gan(sw, dataloader):
 
             ## Train with all-fake batch
             # Generate batch of latent vectors
-            noise = generate_latent_points(LATENT_DIM, mini_batch_size)
+            noise = generate_latent_points(LATENT_DIM, mini_batch_size, DEVICE)
             # Generate fake image batch with G
             fake = g_model(noise)
             label.fill_(FAKE_LABEL)
@@ -234,7 +215,7 @@ def train_gan(sw, dataloader):
         D_G_z2 = np.mean(D_G_z2)
 
         # Output training stats
-        print('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
+        LOGGER.write('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
             % (epoch+1, EPOCHS, errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
 
         # Save Losses for plotting later
@@ -242,7 +223,7 @@ def train_gan(sw, dataloader):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        if epoch % 10 == 0:
+        if epoch % 50 == 0:
             summarize_performance(
                 epoch, sw,
                 errD.item(), errG.item(), 
@@ -251,22 +232,34 @@ def train_gan(sw, dataloader):
                 generate_test(g_model)
             )
 
-        if epoch % 50 == 0:
+            #if epoch % 50 == 0:
             calculate_fid(g_model, d_model, dataloader, sw, epoch)
 
     torch.save(g_model, f'models/adversary/g_exp{EXPERIMENT_ID}.pth')
     torch.save(d_model, f'models/adversary/d_exp{EXPERIMENT_ID}.pth')
 
 
+# Generate the next experiment ID
+EXPERIMENT_ID = generate_experiment_id()
+
+# Create the experiment folder
+EXPERIMENT_PATH = f'logs/experiments/experiment_{EXPERIMENT_ID}'
+os.mkdir(EXPERIMENT_PATH)
+
+# Get the experiment log
+LOGGER = ExperimentLog(f"{EXPERIMENT_PATH}/log")
+
 # Set random seed for reproducibility
-manualSeed = 999
-#manualSeed = random.randint(1, 10000) # use if you want new results
-print("Random Seed: ", manualSeed)
+manualSeed = 999 
+# manualSeed = random.randint(1, 10000) # use if you want new results
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
+LOGGER.write(f"Random Seed: {manualSeed}")
 
+# Get best available device
 DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
+# Parameters
 DATAROOT = 'data/cifar10_attack_labeled_vgg/'
 WORKERS = 4
 BATCH_SIZE = 16
@@ -275,54 +268,39 @@ LATENT_DIM = 100
 LR = 0.0005
 EPOCHS = 10000
 
-#HALF_BATCH = BATCH_SIZE // 2
-#STEPS = 5000 // BATCH_SIZE
-
-#ZEROS = torch.zeros(HALF_BATCH, 1).to(DEVICE)
-#ONES = torch.ones(HALF_BATCH, 1).to(DEVICE)
-
-FIXED_NOISE = generate_latent_points(LATENT_DIM, 10)
+FIXED_NOISE = generate_latent_points(LATENT_DIM, 10, DEVICE)
 REAL_LABEL = 1
 FAKE_LABEL = 0
 
-#EXPERIMENT_ID = len(os.listdir('logs/experiments')) + 1
-EXPERIMENT_ID = generate_experiment_id()
+LOGGER.write(f'#### Experiment {EXPERIMENT_ID} ####')
+LOGGER.write(f'Date: {datetime.now().strftime("%Y%m%d_%H-%M")}')
 
-print(f'#### Experiment {EXPERIMENT_ID} ####')
-print(f'Date: {datetime.now().strftime("%Y%m%d_%H-%M")}')
+LOGGER.write('\nHiperparametros')
+LOGGER.write(f'> Epochs: {EPOCHS}')
+LOGGER.write(f'> Learning Rate: {LR}')
+LOGGER.write(f'> Image Size: {IMAGE_SIZE}')
+LOGGER.write(f'> Batch Size: {BATCH_SIZE}')
+LOGGER.write(f'> Latent Dimension: {LATENT_DIM}')
+LOGGER.write(f'> Device: {DEVICE}')
 
-print('\nHiperparametros')
-print(f'> Epochs: {EPOCHS}')
-print(f'> Learning Rate: {LR}')
-print(f'> Image Size: {IMAGE_SIZE}')
-print(f'> Batch Size: {BATCH_SIZE}')
-#print(f'> Half Batch Size: {HALF_BATCH}')
-#print(f'> Steps: {STEPS}')
-print(f'> Latent Dimension: {LATENT_DIM}')
-print(f'> Device: {DEVICE}')
-
-print('\nGenerator')
+LOGGER.write('\nGenerator')
 sample_g_model, sample_g_optim, sample_g_lrdecay = define_generator()
-print(sample_g_model)
-print(sample_g_optim)
-print(sample_g_lrdecay.__class__.__name__)
+LOGGER.write(sample_g_model)
+LOGGER.write(sample_g_optim)
+LOGGER.write(sample_g_lrdecay.__class__.__name__)
 
-print('\nDiscriminator')
+LOGGER.write('\nDiscriminator')
 sample_d_model, sample_d_optim, sample_d_lrdecay = define_discriminator()
-print(sample_d_model)
-print(sample_d_optim)
-print(sample_d_lrdecay.__class__.__name__)
+LOGGER.write(sample_d_model)
+LOGGER.write(sample_d_optim)
+LOGGER.write(sample_d_lrdecay.__class__.__name__)
 
 del sample_g_model, sample_d_model, sample_g_optim, sample_d_optim, sample_g_lrdecay, sample_d_lrdecay
 
-# for n_class in range(10):
-#     print(f'\n ## Classe {n_class}')
-
 loader = load_real_samples()
 
-print(f'> Dataset: {len(loader.dataset)} samples')
+LOGGER.write(f'> Dataset: {len(loader.dataset)} samples')
 
-sw = SummaryWriter(f'logs/experiments/experiment_{EXPERIMENT_ID}')
+sw = SummaryWriter(EXPERIMENT_PATH)
 
-# train_gan(sw, n_class, loader, EPOCHS)
 train_gan(sw, loader)
