@@ -25,7 +25,7 @@ def evaluate_network(model, dataloader):
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
             _, predicted = outputs.max(1)
-            predicted = predicted.view(labels.size(0), 1)
+            #predicted = predicted.view(labels.size(0), 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 

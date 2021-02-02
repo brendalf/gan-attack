@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 
+from tqdm import tqdm
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
@@ -37,8 +38,8 @@ def define_discriminator():
     model = Discriminator().to(DEVICE)
     model.apply(weights_init)
 
-    optim = Adam(model.parameters(), lr=LR, amsgrad=True)
-    lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
+    optim = Adam(model.parameters(), lr=LR*0.5, amsgrad=True)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=D_LR_DECAY)
     #lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
     return model, optim, lrdecay
@@ -49,25 +50,28 @@ def define_generator():
     model.apply(weights_init)
 
     optim = Adam(model.parameters(), lr=LR, amsgrad=True)
-    lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=G_LR_DECAY)
     #lrdecay = MultiStepLR(optimizer=optim, milestones=np.arange(100, EPOCHS, 100), gamma=0.99)
 
     return model, optim, lrdecay
 
 
-def load_real_samples():
+def load_real_samples(n_class):
     X = ImageFolder(
         root=DATAROOT,
         transform=Compose([
             Resize(IMAGE_SIZE),
             CenterCrop(IMAGE_SIZE),
             ToTensor(),
-            Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+            SquashTransform(),
         ])
     )
 
+    idx = np.where(np.array(X.targets) == n_class)[0]
+    X_class = Subset(X, idx)
+
     loader = DataLoader(
-        X,
+        X_class,
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=WORKERS,
@@ -91,29 +95,29 @@ def generate_test(g_model):
     return grid
 
 
-def summarize_performance(epoch, sw, d_loss, g_loss, d_x, d_g_z, g_lr, d_lr, grid):
-    sw.add_scalar(f'GAN/D Loss', d_loss, epoch)
-    sw.add_scalar(f'GAN/G Loss', g_loss, epoch)
+def summarize_performance(epoch, sw, n_class, d_loss, g_loss, g_mode_loss, d_x, d_g_z, g_lr, d_lr, grid):
+    sw.add_scalar(f'GAN {n_class}/D Loss', d_loss, epoch)
+    sw.add_scalar(f'GAN {n_class}/G Loss', g_loss, epoch)
+    sw.add_scalar(f'GAN {n_class}/G Mode Loss', g_mode_loss, epoch)
 
-    sw.add_scalar(f'GAN/D(x)', d_x, epoch)
-    sw.add_scalar(f'GAN/D(G(z))', d_g_z, epoch)
+    sw.add_scalar(f'GAN {n_class}/D(x)', d_x, epoch)
+    sw.add_scalar(f'GAN {n_class}/D(G(z))', d_g_z, epoch)
 
-    sw.add_scalar(f'GAN/G LR', g_lr, epoch)
-    sw.add_scalar(f'GAN/D LR', d_lr, epoch)
+    sw.add_scalar(f'GAN {n_class}/G LR', g_lr, epoch)
+    sw.add_scalar(f'GAN {n_class}/D LR', d_lr, epoch)
 
-    sw.add_image(f'GAN/Output', grid, epoch)
+    sw.add_image(f'GAN {n_class}/Output', grid, epoch)
 
 
-def calculate_fid(g_model, d_model, loader, sw, epoch):
+def calculate_fid(g_model, d_model, loader, sw, epoch, n_class):
     # generate fake samples
     fake_images = g_model(generate_latent_points(LATENT_DIM, 32, DEVICE))
-    #fake_images.to(torch.device('cpu')).detach().numpy()
+    #fake_images = g_model(FIXED_NOISE)
 
     # load real samples
     b1 = next(iter(loader))
     b2 = next(iter(loader))
     real_images = torch.cat((b1[0], b2[0]), 0)
-    #real_images.to(torch.device('cpu')).detach().numpy()
     real_images.to(DEVICE)
     del b1, b2
 
@@ -122,14 +126,14 @@ def calculate_fid(g_model, d_model, loader, sw, epoch):
     d_model = d_model.to(torch.device('cpu'))
 
     # load model
-    from fid_pytorch import FID
+    from fid import FID
     fid_model = FID()
 
     # calculate FID
     fid = fid_model.calculate_fid(real_images, fake_images)
 
     # save FID
-    sw.add_scalar(f'GAN/FID', fid, epoch)
+    sw.add_scalar(f'GAN {n_class}/FID', fid, epoch)
 
     # clean memory
     del fid_model, real_images, fake_images
@@ -138,8 +142,10 @@ def calculate_fid(g_model, d_model, loader, sw, epoch):
     g_model = g_model.to(DEVICE)
     d_model = d_model.to(DEVICE)
 
+    return fid
 
-def train_gan(sw, dataloader):
+
+def train_gan(sw, n_class, dataloader):
     d_model, d_optim, d_lrdecay = define_discriminator()
     g_model, g_optim, g_lrdecay = define_generator()
     criterion = nn.BCELoss()
@@ -147,6 +153,8 @@ def train_gan(sw, dataloader):
     img_list = []
     G_losses = []
     D_losses = []
+
+    min_fid = np.inf
 
     for epoch in range(EPOCHS):
         D_x, D_G_z1, D_G_z2 = [], [], []
@@ -177,9 +185,6 @@ def train_gan(sw, dataloader):
             label.fill_(FAKE_LABEL)
             # Classify all fake batch with D
             output = d_model(fake.detach()).view(-1)
-            # Calculate mode loss
-            #mode_loss = alpha * torch.mean(torch.abs(images2 - images1)) \
-            #    / torch.mean(torch.abs(z2 - z1))
             # Calculate D's loss on the all-fake batch
             errD_fake = criterion(output, label)
             # Calculate the gradients for this batch
@@ -197,10 +202,16 @@ def train_gan(sw, dataloader):
             label.fill_(REAL_LABEL)  # fake labels are real for generator cost
             # Since we just updated D, perform another forward pass of all-fake batch through D
             output = d_model(fake).view(-1)
-            # Calculate G's loss based on this output
-            errG = criterion(output, label)
+            # Calculate mode seeking loss
+            z1, z2, *z = torch.split(noise, noise.size(0)//2)
+            f1, f2, *f = torch.split(fake, fake.size(0)//2)
+            mode_loss = torch.mean(torch.abs(f2 - f1)) / torch.mean(torch.abs(z2 - z1))
+            mode_loss = 1 / (mode_loss + 1e-5)
+            # Calculate G's loss based on this output            
+            errG = criterion(output, label) + mode_loss
+            loss_G = errG + mode_loss
             # Calculate gradients for G
-            errG.backward()
+            loss_G.backward()
             D_G_z2.append(output.mean().item())
             # Update G
             g_optim.step()
@@ -223,20 +234,24 @@ def train_gan(sw, dataloader):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
+        fid = min_fid
         if epoch % 50 == 0:
             summarize_performance(
-                epoch, sw,
-                errD.item(), errG.item(), 
-                D_x, D_G_z2,
+                epoch, sw, n_class,
+                errD.item(), errG.item(), mode_loss,
+                D_x, D_G_z1,
                 g_lrdecay.get_last_lr()[-1], d_lrdecay.get_last_lr()[-1],
                 generate_test(g_model)
             )
 
             #if epoch % 50 == 0:
-            calculate_fid(g_model, d_model, dataloader, sw, epoch)
+            fid = calculate_fid(g_model, d_model, dataloader, sw, epoch, n_class)
 
-    torch.save(g_model, f'models/adversary/g_exp{EXPERIMENT_ID}.pth')
-    torch.save(d_model, f'models/adversary/d_exp{EXPERIMENT_ID}.pth')
+        if fid < min_fid:
+            min_fid = fid
+
+            torch.save(g_model, f'models/adversary/g_exp{EXPERIMENT_ID}_class{n_class}.pth')
+            torch.save(d_model, f'models/adversary/d_exp{EXPERIMENT_ID}_class{n_class}.pth')
 
 
 # Generate the next experiment ID
@@ -244,10 +259,12 @@ EXPERIMENT_ID = generate_experiment_id()
 
 # Create the experiment folder
 EXPERIMENT_PATH = f'logs/experiments/experiment_{EXPERIMENT_ID}'
-os.mkdir(EXPERIMENT_PATH)
+
+if not os.path.exists(EXPERIMENT_PATH):
+    os.mkdir(EXPERIMENT_PATH)
 
 # Get the experiment log
-LOGGER = ExperimentLog(f"{EXPERIMENT_PATH}/log")
+LOGGER = ExperimentLog(f"{EXPERIMENT_PATH}/log_gan")
 
 # Set random seed for reproducibility
 manualSeed = 999 
@@ -260,15 +277,17 @@ LOGGER.write(f"Random Seed: {manualSeed}")
 DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
 # Parameters
-DATAROOT = 'data/cifar10_attack_labeled_vgg/'
+DATAROOT = 'data/cifar10_attack_v2_stolen_labels/'
 WORKERS = 4
 BATCH_SIZE = 16
 IMAGE_SIZE = 64
 LATENT_DIM = 100
 LR = 0.0005
-EPOCHS = 10000
+EPOCHS = 1500
+D_LR_DECAY = 0.999
+G_LR_DECAY = 0.999
 
-FIXED_NOISE = generate_latent_points(LATENT_DIM, 10, DEVICE)
+FIXED_NOISE = generate_latent_points(LATENT_DIM, 20, DEVICE)
 REAL_LABEL = 1
 FAKE_LABEL = 0
 
@@ -279,6 +298,7 @@ LOGGER.write('\nHiperparametros')
 LOGGER.write(f'> Epochs: {EPOCHS}')
 LOGGER.write(f'> Learning Rate: {LR}')
 LOGGER.write(f'> Image Size: {IMAGE_SIZE}')
+LOGGER.write(f'> Image Size: {IMAGE_SIZE}')
 LOGGER.write(f'> Batch Size: {BATCH_SIZE}')
 LOGGER.write(f'> Latent Dimension: {LATENT_DIM}')
 LOGGER.write(f'> Device: {DEVICE}')
@@ -288,19 +308,25 @@ sample_g_model, sample_g_optim, sample_g_lrdecay = define_generator()
 LOGGER.write(sample_g_model)
 LOGGER.write(sample_g_optim)
 LOGGER.write(sample_g_lrdecay.__class__.__name__)
+LOGGER.write(f'Gamma: {G_LR_DECAY}')
 
 LOGGER.write('\nDiscriminator')
 sample_d_model, sample_d_optim, sample_d_lrdecay = define_discriminator()
 LOGGER.write(sample_d_model)
 LOGGER.write(sample_d_optim)
 LOGGER.write(sample_d_lrdecay.__class__.__name__)
+LOGGER.write(f'Gamma: {D_LR_DECAY}')
 
 del sample_g_model, sample_d_model, sample_g_optim, sample_d_optim, sample_g_lrdecay, sample_d_lrdecay
 
-loader = load_real_samples()
+LOGGER.write("Starting GAN attack")
+for n_class in range(10):
+    LOGGER.write(f'\n ## Classe {n_class}')
 
-LOGGER.write(f'> Dataset: {len(loader.dataset)} samples')
+    loader = load_real_samples(n_class)
 
-sw = SummaryWriter(EXPERIMENT_PATH)
+    LOGGER.write(f'> Dataset: {len(loader.dataset)} samples')
 
-train_gan(sw, loader)
+    sw = SummaryWriter(EXPERIMENT_PATH)
+
+    train_gan(sw, n_class, loader)
