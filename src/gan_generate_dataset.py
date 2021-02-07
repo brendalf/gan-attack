@@ -14,7 +14,7 @@ from experiment import ExperimentLog
 from utils import generate_latent_points
 
 
-EXPERIMENT_ID = 70
+EXPERIMENT_ID = input("Experiment ID: ")
 EXPERIMENT_PATH = f'logs/experiments/experiment_{EXPERIMENT_ID}'
 
 # Get the experiment log
@@ -39,7 +39,7 @@ LOGGER.write(f'> Classes: {CLASSES}')
 LOGGER.write(f'> Training Size: {TRAINING_SIZE}*{MULTIPLIER_TRAINING_SIZE}')
 LOGGER.write(f'> Device: {DEVICE}')
 
-for n in tqdm(np.arange(0, CLASSES)):
+for n in np.arange(CLASSES):
     LOGGER.write(f"\nLoading generator from class {n}")
     g_model = torch.load(f'models/adversary/g_exp{EXPERIMENT_ID}_class{n}.pth')
 
@@ -50,7 +50,7 @@ for n in tqdm(np.arange(0, CLASSES)):
     if not os.path.exists(output_path):
         os.mkdir(output_path)
 
-    for i in np.arange(0, MULTIPLIER_TRAINING_SIZE):
+    for i in tqdm(np.arange(MULTIPLIER_TRAINING_SIZE)):
         X = generate_latent_points(100, TRAINING_SIZE, DEVICE)
 
         generated = g_model(X)

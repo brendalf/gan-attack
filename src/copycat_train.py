@@ -20,7 +20,7 @@ from experiment import ExperimentLog
 from models.vgg import VGG19
 
 
-EXPERIMENT_ID = 70
+EXPERIMENT_ID = input("Experiment ID: ")
 EXPERIMENT_PATH = f'logs/experiments/experiment_{EXPERIMENT_ID}'
 
 # Get the experiment log
@@ -30,11 +30,15 @@ LOGGER = ExperimentLog(f"{EXPERIMENT_PATH}/log_copycat")
 DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
 # Parameters
-EPOCHS = 10
+EPOCHS = 30
 WORKERS = 4
 BATCH_SIZE_TRAIN = 64
 BATCH_SIZE_VAL = 32
+
+#FAKESET = "data/cifar10_attack_v2/"
+#FAKESET = "data/copycat_generated_dataset/"
 FAKESET = "data/copycat_generated_dataset_stolen_labels/"
+
 if not os.path.exists(FAKESET):
     os.mkdir(FAKESET)
 
@@ -53,7 +57,6 @@ LOGGER.write("Loading generated dataset")
 imagefolder = ImageFolder(
     FAKESET,
     transform=Compose([
-        Resize((32,32)),
         ToTensor(),
         #Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
     ])
@@ -62,7 +65,8 @@ dataloader = DataLoader(
     imagefolder,
     batch_size=BATCH_SIZE_TRAIN,
     num_workers=WORKERS,
-    shuffle=True
+    shuffle=True,
+    drop_last=True
 )
 
 LOGGER.write("\nCopyCat Architecture")
@@ -75,7 +79,6 @@ testset = CIFAR10(
     train=False,
     download=True,
     transform=Compose([
-        Resize((32,32)),
         ToTensor(),
         #Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
     ])

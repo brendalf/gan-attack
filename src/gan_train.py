@@ -21,8 +21,8 @@ from datetime import datetime
 
 from utils import SquashTransform, generate_latent_points
 from experiment import ExperimentLog, generate_experiment_id
-from models.generator import GeneratorDCGAN as Generator
-from models.discriminator import DiscriminatorDCGAN as Discriminator
+from models.generator import GeneratorDCGAN32 as Generator
+from models.discriminator import DiscriminatorDCGAN32 as Discriminator
 
 
 def weights_init(m):
@@ -61,7 +61,6 @@ def load_real_samples(n_class):
         root=DATAROOT,
         transform=Compose([
             Resize(IMAGE_SIZE),
-            CenterCrop(IMAGE_SIZE),
             ToTensor(),
             SquashTransform(),
         ])
@@ -75,6 +74,7 @@ def load_real_samples(n_class):
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=WORKERS,
+        drop_last=True
     )
 
     return loader
@@ -280,7 +280,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 DATAROOT = 'data/cifar10_attack_v2_stolen_labels/'
 WORKERS = 4
 BATCH_SIZE = 16
-IMAGE_SIZE = 64
+IMAGE_SIZE = 32
 LATENT_DIM = 100
 LR = 0.0005
 EPOCHS = 1500

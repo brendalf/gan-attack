@@ -14,6 +14,7 @@ np.set_printoptions(suppress=True)
 
 model = VGG('VGG19')
 model = torch.load('models/target/cifar10.vgg19.pth')
+model = model.to(DEVICE)
 
 norm = Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
 
