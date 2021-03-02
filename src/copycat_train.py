@@ -1,138 +1,133 @@
-import os
-import numpy as np
-import pandas as pd
+import random
 
 import torch
 import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import torch.backends.cudnn as cudnn
 
-from torch.optim import Adam
-from torch.optim.lr_scheduler import ExponentialLR
+import torchvision
+import torchvision.transforms as transforms
 
-from tqdm import tqdm
-from datetime import datetime
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
+import os
+import argparse
 
-from torchvision.transforms import Compose, Resize, Normalize, ToTensor, RandomCrop, RandomHorizontalFlip
-from torchvision.datasets import CIFAR10, ImageFolder
+from models.vgg import VGG
+from utils import progress_bar
 
-from experiment import ExperimentLog
-from models.vgg import VGG19
+manualSeed = 999 
+# manualSeed = random.randint(1, 10000) # use if you want new results
+random.seed(manualSeed)
+torch.manual_seed(manualSeed)
 
+parser = argparse.ArgumentParser(description='Copycat Training')
+parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
+parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
+args = parser.parse_args()
 
-EXPERIMENT_ID = input("Experiment ID: ")
-EXPERIMENT_PATH = f'logs/experiments/experiment_{EXPERIMENT_ID}'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+best_acc = 0  # best test accuracy
+start_epoch = 0  # start from epoch 0 or last checkpoint epoch
 
-# Get the experiment log
-LOGGER = ExperimentLog(f"{EXPERIMENT_PATH}/log_copycat")
+# Data
+print('==> Preparing data..')
+transform_train = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.ToTensor(),
+])
 
-# Get best available device
-DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
+transform_test = transforms.Compose([
+    transforms.ToTensor(),
+])
 
-# Parameters
-EPOCHS = 30
-WORKERS = 4
-BATCH_SIZE_TRAIN = 64
-BATCH_SIZE_VAL = 32
+trainset = torchvision.datasets.ImageFolder(
+    root='data/dataset_i+dataset_gan117_sl/', transform=transform_train)
+trainloader = torch.utils.data.DataLoader(
+    trainset, batch_size=32, shuffle=True, num_workers=2)
 
-#FAKESET = "data/cifar10_attack_v2/"
-#FAKESET = "data/copycat_generated_dataset/"
-FAKESET = "data/copycat_generated_dataset_stolen_labels/"
+testset = torchvision.datasets.CIFAR10(
+    root='./data', train=False, download=True, transform=transform_test)
+testloader = torch.utils.data.DataLoader(
+    testset, batch_size=32, shuffle=False, num_workers=2)
 
-if not os.path.exists(FAKESET):
-    os.mkdir(FAKESET)
+# Model
+print('==> Building model...')
+net = VGG('VGG19')
+net = net.to(device)
 
-LOGGER.write(f'#### Experiment {EXPERIMENT_ID} ####')
-LOGGER.write(f'Date: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+if device == 'cuda':
+    net = torch.nn.DataParallel(net)
+    cudnn.benchmark = True
 
-LOGGER.write('\nHiperparametros')
-LOGGER.write(f'> Epochs: {EPOCHS}')
-LOGGER.write(f'> Batch Size Train: {BATCH_SIZE_TRAIN}')
-LOGGER.write(f'> Batch Size Val: {BATCH_SIZE_VAL}')
-LOGGER.write(f'> Device: {DEVICE}')
+if args.resume:
+    # Load checkpoint.
+    print('==> Resuming from checkpoint...')
+    assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
+    checkpoint = torch.load('./checkpoint/copycat_ckpt.pth')
+    net.load_state_dict(checkpoint['net'])
+    best_acc = checkpoint['acc']
+    start_epoch = checkpoint['epoch']
 
-sw = SummaryWriter(EXPERIMENT_PATH)
-
-LOGGER.write("Loading generated dataset")
-imagefolder = ImageFolder(
-    FAKESET,
-    transform=Compose([
-        ToTensor(),
-        #Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-    ])
-)
-dataloader = DataLoader(
-    imagefolder,
-    batch_size=BATCH_SIZE_TRAIN,
-    num_workers=WORKERS,
-    shuffle=True,
-    drop_last=True
-)
-
-LOGGER.write("\nCopyCat Architecture")
-model = VGG19().to(DEVICE)
-LOGGER.write(model)
-
-LOGGER.write("Loading testset")
-testset = CIFAR10(
-    root='../data',
-    train=False,
-    download=True,
-    transform=Compose([
-        ToTensor(),
-        #Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-    ])
-)
-testloader = DataLoader(testset, batch_size=BATCH_SIZE_VAL, shuffle=False, num_workers=WORKERS)
-
-LOGGER.write("Starting copycat training")
 criterion = nn.CrossEntropyLoss()
-optim = Adam(model.parameters(), lr=0.0005, amsgrad=True)
-lrdecay = ExponentialLR(optimizer=optim, gamma=0.99)
+optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9) #, weight_decay=5e-4)
 
-for epoch in range(EPOCHS):
-    model.train()
-    train_loss = 0.0
-
-    for inputs, labels in tqdm(dataloader):
-        inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
-
-        optim.zero_grad()
-
-        outputs = model(inputs)
-
-        loss = criterion(outputs, labels)
+# Training
+def train(epoch):
+    print('\nEpoch: %d' % epoch)
+    net.train()
+    train_loss = 0
+    correct = 0
+    total = 0
+    for batch_idx, (inputs, targets) in enumerate(trainloader):
+        inputs, targets = inputs.to(device), targets.to(device)
+        optimizer.zero_grad()
+        outputs = net(inputs)
+        loss = criterion(outputs, targets)
         loss.backward()
-
-        optim.step()
+        optimizer.step()
 
         train_loss += loss.item()
-    else:
-        correct = 0
-        total = 0
-        val_loss = 0.0
+        _, predicted = outputs.max(1)
+        total += targets.size(0)
+        correct += predicted.eq(targets).sum().item()
 
-        with torch.no_grad():
-            model.eval()
+        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                     % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
-            for inputs, labels in tqdm(testloader):
-                inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+def test(epoch):
+    global best_acc
+    net.eval()
+    test_loss = 0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(testloader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = net(inputs)
+            loss = criterion(outputs, targets)
 
-                outputs = model(inputs)
+            test_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += targets.size(0)
+            correct += predicted.eq(targets).sum().item()
 
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
+            progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                         % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
-                _, predicted = outputs.max(1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+    # Save checkpoint.
+    acc = 100.*correct/total
+    if acc > best_acc:
+        print('Saving...')
+        state = {
+            'net': net.state_dict(),
+            'acc': acc,
+            'epoch': epoch,
+        }
+        #if not os.path.isdir('checkpoint'):
+        #    os.mkdir('checkpoint')
+        torch.save(state, './models/copycat/dataset_i+dataset_gan117_sl.pth')
+        best_acc = acc
 
-    lrdecay.step()
-
-    acc = 100 * correct / total
-    LOGGER.write(f'E: {epoch+1}/{EPOCHS} [train_loss: {train_loss:.3f}, val_loss: {val_loss:.3f}, val_acc: {acc:.3f}]')
-
-    sw.add_scalar(f'CopyCat/Train Loss', train_loss, epoch+1)
-    sw.add_scalar(f'CopyCat/Val Loss', val_loss, epoch+1)
-    sw.add_scalar(f'CopyCat/Val Acc', acc, epoch+1)
-    sw.add_scalar(f'CopyCat/LR', lrdecay.get_last_lr()[-1], epoch+1)
+for epoch in range(start_epoch, start_epoch+50):
+    train(epoch)
+    test(epoch)

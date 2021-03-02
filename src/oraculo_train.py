@@ -15,8 +15,8 @@ from models.vgg import VGG
 from utils import progress_bar
 
 
-parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-parser.add_argument('--lr', default=0.05, type=float, help='learning rate')
+parser = argparse.ArgumentParser(description='Target Training')
+parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true',
                     help='resume from checkpoint')
 args = parser.parse_args()
@@ -31,33 +31,27 @@ transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-    #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
 transform_test = transforms.Compose([
     transforms.Resize((32, 32)),
     transforms.ToTensor(),
-    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-    #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
-#trainset = torchvision.datasets.CIFAR10(
-#    root='./data', train=True, download=True, transform=transform_train)
-trainset = torchvision.datasets.STL10(
-    root='data', split='train', download=True, transform=transform_train)
+trainset = torchvision.datasets.CIFAR10(
+    root='./data', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(
-    trainset, batch_size=32, shuffle=True, num_workers=2)
+    trainset, batch_size=128, shuffle=True, num_workers=2)
 
-#testset = torchvision.datasets.CIFAR10(
-#    root='./data', train=False, download=True, transform=transform_test)
-testset = torchvision.datasets.STL10(
-    root='data', split='test', download=True, transform=transform_test)
+testset = torchvision.datasets.CIFAR10(
+    root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(
-    testset, batch_size=32, shuffle=False, num_workers=2)
+    testset, batch_size=100, shuffle=False, num_workers=2)
 
 # Model
-print('==> Building model..')
+print('==> Building model...')
 net = VGG('VGG19')
 net = net.to(device)
 
@@ -69,14 +63,14 @@ if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/ckpt.pth')
+    checkpoint = torch.load('./checkpoint/target_ckpt.pth')
     net.load_state_dict(checkpoint['net'])
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr,
-                      momentum=0.9) #, weight_decay=5e-4)
+                      momentum=0.9, weight_decay=5e-4)
 
 
 # Training
@@ -134,7 +128,7 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.pth')
+        torch.save(state, './checkpoint/target_ckpt.pth')
         best_acc = acc
 
 
