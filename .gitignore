@@ -106,3 +106,5 @@ models/
 notebooks/runs/
 
 logs/
+
+checkpoint/
