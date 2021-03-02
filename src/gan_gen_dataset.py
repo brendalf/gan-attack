@@ -27,7 +27,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 CLASSES = 10
 TRAINING_SIZE = 1000
 MULTIPLIER_TRAINING_SIZE = 10
-FAKESET = "data/copycat_generated_dataset/"
+FAKESET = f"data/dataset_gan{EXPERIMENT_ID}/"
 if not os.path.exists(FAKESET):
     os.mkdir(FAKESET)
 
@@ -41,7 +41,7 @@ LOGGER.write(f'> Device: {DEVICE}')
 
 for n in np.arange(CLASSES):
     LOGGER.write(f"\nLoading generator from class {n}")
-    g_model = torch.load(f'models/adversary/g_exp{EXPERIMENT_ID}_class{n}.pth')
+    g_model = torch.load(f'models/gan/g_exp{EXPERIMENT_ID}_class{n}.pth')
 
     LOGGER.write(f"Generating images from class {n}")
     output_path = os.path.join(FAKESET, str(n))
