@@ -19,10 +19,13 @@ from torchvision.transforms import Compose, ToTensor, CenterCrop, Normalize, Res
 
 from datetime import datetime
 
+from fid import read_stats_file
 from utils import SquashTransform, generate_latent_points
 from experiment import ExperimentLog, generate_experiment_id
+
 from models.generator import GeneratorDCGAN32 as Generator
 from models.discriminator import DiscriminatorDCGAN32 as Discriminator
+from models.vgg import VGG
 
 
 def weights_init(m):
@@ -109,40 +112,46 @@ def summarize_performance(epoch, sw, n_class, d_loss, g_loss, g_mode_loss, d_x, 
     sw.add_image(f'GAN {n_class}/Output', grid, epoch)
 
 
-def calculate_fid(g_model, d_model, loader, sw, epoch, n_class):
-    # generate fake samples
-    fake_images = g_model(generate_latent_points(LATENT_DIM, 32, DEVICE))
-    #fake_images = g_model(FIXED_NOISE)
-
-    # load real samples
-    b1 = next(iter(loader))
-    b2 = next(iter(loader))
-    real_images = torch.cat((b1[0], b2[0]), 0)
-    real_images.to(DEVICE)
-    del b1, b2
-
-    # saving space in the gpu for loading inception v3
-    g_model = g_model.to(torch.device('cpu'))
-    d_model = d_model.to(torch.device('cpu'))
-
+def calculate_fid(fake_images, sw, epoch, n_class):
     # load model
     from fid import FID
     fid_model = FID()
 
+    # calculate statistics
+    fake_mu, fake_sigma = fid_model.calculate_statistics(fake_images, 32)
+
     # calculate FID
-    fid = fid_model.calculate_fid(real_images, fake_images)
+    fid_odd = fid_model.calculate_fid(fake_mu, fake_sigma, TARGET_FID[0], TARGET_FID[1])
+    fid_real = fid_model.calculate_fid(fake_mu, fake_sigma, DATASET_FID[0], DATASET_FID[1])
 
     # save FID
-    sw.add_scalar(f'GAN {n_class}/FID', fid, epoch)
+    sw.add_scalar(f'GAN {n_class}/FID ODD', fid_odd, epoch)
+    sw.add_scalar(f'GAN {n_class}/FID Real', fid_real, epoch)
 
     # clean memory
-    del fid_model, real_images, fake_images
+    del fid_model, fake_images, fake_mu, fake_sigma
 
-    # put models back on GPU
-    g_model = g_model.to(DEVICE)
-    d_model = d_model.to(DEVICE)
+    return fid_real
 
-    return fid
+
+def calculate_target_acc(fake_images, sw, epoch, n_class):
+    target = torch.load('models/target/cifar10.vgg19.pth')
+    target = target.to(DEVICE)
+    labels = torch.ones(fake_images.size(0)) * n_class
+    labels = labels.to(DEVICE)
+
+    with torch.no_grad(): # turn off grad
+        target.eval()
+
+        outputs = target(fake_images)
+        _, predicted = outputs.max(1)
+        correct = predicted.eq(labels).sum().item()
+
+    acc = 100 * correct / fake_images.size(0)
+
+    sw.add_scalar(f'GAN {n_class}/Target Acc', acc, epoch)
+
+    return acc
 
 
 def train_gan(sw, n_class, dataloader):
@@ -154,7 +163,8 @@ def train_gan(sw, n_class, dataloader):
     G_losses = []
     D_losses = []
 
-    min_fid = np.inf
+    global best_fid
+    best_fid = np.inf
 
     for epoch in range(EPOCHS):
         D_x, D_G_z1, D_G_z2 = [], [], []
@@ -234,7 +244,6 @@ def train_gan(sw, n_class, dataloader):
         D_losses.append(errD.item())
 
         # Check how the generator is doing by saving G's output on fixed_noise
-        fid = min_fid
         if epoch % 50 == 0:
             summarize_performance(
                 epoch, sw, n_class,
@@ -244,14 +253,29 @@ def train_gan(sw, n_class, dataloader):
                 generate_test(g_model)
             )
 
+            # generate fake samples
+            fake_images = g_model(FIXED_NOISE_2)
+
+            # saving space in the gpu for loading inception v3
+            g_model = g_model.to(torch.device('cpu'))
+            d_model = d_model.to(torch.device('cpu'))
+
             #if epoch % 50 == 0:
-            fid = calculate_fid(g_model, d_model, dataloader, sw, epoch, n_class)
+            fid = calculate_fid(fake_images, sw, epoch, n_class)
+            acc = calculate_target_acc(fake_images, sw, epoch, n_class)
 
-        if fid < min_fid:
-            min_fid = fid
+            # put models back on GPU
+            g_model = g_model.to(DEVICE)
+            d_model = d_model.to(DEVICE)
 
-            torch.save(g_model, f'models/adversary/g_exp{EXPERIMENT_ID}_class{n_class}.pth')
-            torch.save(d_model, f'models/adversary/d_exp{EXPERIMENT_ID}_class{n_class}.pth')
+            #if fid < best_fid:
+            #    best_fid = fid
+            #
+            #    torch.save(g_model, f'models/gan/g_exp{EXPERIMENT_ID}_class{n_class}.pth')
+            #    torch.save(d_model, f'models/gan/d_exp{EXPERIMENT_ID}_class{n_class}.pth')
+
+    torch.save(g_model, f'models/gan/g_exp{EXPERIMENT_ID}_class{n_class}.pth')
+    torch.save(d_model, f'models/gan/d_exp{EXPERIMENT_ID}_class{n_class}.pth')
 
 
 # Generate the next experiment ID
@@ -277,7 +301,7 @@ LOGGER.write(f"Random Seed: {manualSeed}")
 DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
 # Parameters
-DATAROOT = 'data/cifar10_attack_v2_stolen_labels/'
+DATAROOT = 'data/dataset_ii/'
 WORKERS = 4
 BATCH_SIZE = 16
 IMAGE_SIZE = 32
@@ -286,8 +310,11 @@ LR = 0.0005
 EPOCHS = 1500
 D_LR_DECAY = 0.999
 G_LR_DECAY = 0.999
+TARGET_FID = read_stats_file('logs/cifar10_fid.npz')
+DATASET_FID = read_stats_file('logs/dataset_i_fid.npz')
 
 FIXED_NOISE = generate_latent_points(LATENT_DIM, 20, DEVICE)
+FIXED_NOISE_2 = generate_latent_points(LATENT_DIM, 500, DEVICE)
 REAL_LABEL = 1
 FAKE_LABEL = 0
 
