@@ -25,9 +25,9 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
 # Parameters
 CLASSES = 10
-TRAINING_SIZE = 1000
+TRAINING_SIZE = 900
 MULTIPLIER_TRAINING_SIZE = 10
-FAKESET = f"data/dataset_gan{EXPERIMENT_ID}/"
+FAKESET = f"data/vgg16/dataset_gan{EXPERIMENT_ID}/"
 if not os.path.exists(FAKESET):
     os.mkdir(FAKESET)
 

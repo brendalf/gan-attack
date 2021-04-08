@@ -4,24 +4,39 @@ import numpy as np
 
 from tqdm import tqdm
 
+import torch.backends.cudnn as cudnn
+
 from torchvision.utils import save_image
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import Resize, Compose, Normalize, ToTensor
 
-from models.vgg import VGG
+from models.vgg import VGG16
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+MODEL_PATH = 'models/target/cifar10.vgg16.pth'
 
 np.set_printoptions(suppress=True)
 
-model = VGG('VGG19')
-model = torch.load('models/target/cifar10.vgg19.pth')
-model = model.to(DEVICE)
+checkpoint = torch.load(MODEL_PATH)
+if isinstance(checkpoint, dict):
+    model = VGG16()
+    model = model.to(DEVICE)
+    checkpoint = torch.load(MODEL_PATH)
+
+    model = torch.nn.DataParallel(model)
+    cudnn.benchmark = True
+    model.load_state_dict(checkpoint['net'])
+    print("Epoch: ", checkpoint['epoch'] + 1)
+else:
+    model = torch.load(MODEL_PATH)
+    model.to(DEVICE)
 
 norm = Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
 
-dataset_folder = 'data/dataset_gan116'
-stolen_labels_folder = 'data/dataset_gan116_sl'
+true_labels = False
+data_folder = 'dataset_gan133'
+dataset_folder = f'data/vgg16/{data_folder}'
+stolen_labels_folder = f'data/vgg16/{data_folder}_sl{"_ml" if true_labels else ""}'
 
 transform = Compose([
     #Resize((32, 32)),
@@ -35,8 +50,6 @@ if not os.path.exists(stolen_labels_folder):
 
 real_labels = np.array([])
 pred_labels = np.array([])
-
-true_labels = False
 
 print('Generating labels from target...')
 with torch.no_grad():

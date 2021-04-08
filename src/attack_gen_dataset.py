@@ -15,7 +15,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 np.set_printoptions(suppress=True)
 
-new_folder = 'data/dataset_iv'
+new_folder = 'data/dataset_v'
 
 trainset = STL10(
     root='data', 
@@ -41,7 +41,7 @@ testloader = DataLoader(testset, shuffle=True, batch_size=1)
 
 os.makedirs(new_folder, exist_ok=True)
 
-num = 2000
+num = 1300
 
 map_classes = {
     0: 0, # airplane

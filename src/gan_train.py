@@ -23,9 +23,9 @@ from fid import read_stats_file
 from utils import SquashTransform, generate_latent_points
 from experiment import ExperimentLog, generate_experiment_id
 
-from models.generator import GeneratorDCGAN32 as Generator
-from models.discriminator import DiscriminatorDCGAN32 as Discriminator
-from models.vgg import VGG
+from models.generator import Generator32 as Generator
+from models.discriminator import Discriminator32 as Discriminator
+from models.vgg import VGG16
 
 
 def weights_init(m):
@@ -135,8 +135,14 @@ def calculate_fid(fake_images, sw, epoch, n_class):
 
 
 def calculate_target_acc(fake_images, sw, epoch, n_class):
-    target = torch.load('models/target/cifar10.vgg19.pth')
+    target = VGG16()
     target = target.to(DEVICE)
+    checkpoint = torch.load('models/target/cifar10.vgg16.pth')
+
+    target = nn.DataParallel(target)
+    cudnn.benchmark = True
+    target.load_state_dict(checkpoint['net'])
+
     labels = torch.ones(fake_images.size(0)) * n_class
     labels = labels.to(DEVICE)
 
@@ -159,7 +165,6 @@ def train_gan(sw, n_class, dataloader):
     g_model, g_optim, g_lrdecay = define_generator()
     criterion = nn.BCELoss()
 
-    img_list = []
     G_losses = []
     D_losses = []
 
@@ -168,8 +173,10 @@ def train_gan(sw, n_class, dataloader):
 
     for epoch in range(EPOCHS):
         D_x, D_G_z1, D_G_z2 = [], [], []
+        errD, errG = torch.tensor(0), torch.tensor(0)
+        mode_loss = 0
 
-        for i, data in enumerate(dataloader):
+        for _, data in enumerate(dataloader):
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
@@ -191,7 +198,9 @@ def train_gan(sw, n_class, dataloader):
             # Generate batch of latent vectors
             noise = generate_latent_points(LATENT_DIM, mini_batch_size, DEVICE)
             # Generate fake image batch with G
-            fake = g_model(noise)
+            fake = 0
+            with torch.no_grad():
+                fake = g_model(noise)
             label.fill_(FAKE_LABEL)
             # Classify all fake batch with D
             output = d_model(fake.detach()).view(-1)
@@ -209,13 +218,22 @@ def train_gan(sw, n_class, dataloader):
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
             g_model.zero_grad()
-            label.fill_(REAL_LABEL)  # fake labels are real for generator cost
+            # Format batch
+            mini_batch_size = mini_batch_size * 2
+            label = torch.full((mini_batch_size,), REAL_LABEL, dtype=torch.float, device=DEVICE)
+            # Generate batch of latent vectors
+            noise = generate_latent_points(LATENT_DIM, mini_batch_size, DEVICE)
+            # Generate fake image batch with G
+            fake = g_model(noise) 
             # Since we just updated D, perform another forward pass of all-fake batch through D
-            output = d_model(fake).view(-1)
+            output = 0
+            with torch.no_grad():
+                output = d_model(fake).view(-1)
             # Calculate mode seeking loss
-            z1, z2, *z = torch.split(noise, noise.size(0)//2)
-            f1, f2, *f = torch.split(fake, fake.size(0)//2)
+            z1, z2, *_ = torch.split(noise, noise.size(0)//2)
+            f1, f2, *_ = torch.split(fake, fake.size(0)//2)
             mode_loss = torch.mean(torch.abs(f2 - f1)) / torch.mean(torch.abs(z2 - z1))
+            # mode_loss = mode_loss / 2
             mode_loss = 1 / (mode_loss + 1e-5)
             # Calculate G's loss based on this output            
             errG = criterion(output, label) + mode_loss
@@ -261,8 +279,8 @@ def train_gan(sw, n_class, dataloader):
             d_model = d_model.to(torch.device('cpu'))
 
             #if epoch % 50 == 0:
-            fid = calculate_fid(fake_images, sw, epoch, n_class)
-            acc = calculate_target_acc(fake_images, sw, epoch, n_class)
+            calculate_fid(fake_images, sw, epoch, n_class)
+            calculate_target_acc(fake_images, sw, epoch, n_class)
 
             # put models back on GPU
             g_model = g_model.to(DEVICE)
@@ -301,7 +319,7 @@ LOGGER.write(f"Random Seed: {manualSeed}")
 DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
 # Parameters
-DATAROOT = 'data/dataset_ii/'
+DATAROOT = 'data/vgg16/dataset_ii_sl/'
 WORKERS = 4
 BATCH_SIZE = 16
 IMAGE_SIZE = 32
@@ -311,7 +329,7 @@ EPOCHS = 1500
 D_LR_DECAY = 0.999
 G_LR_DECAY = 0.999
 TARGET_FID = read_stats_file('logs/cifar10_fid.npz')
-DATASET_FID = read_stats_file('logs/dataset_i_fid.npz')
+DATASET_FID = read_stats_file('logs/dataset_i_sl_fid.npz')
 
 FIXED_NOISE = generate_latent_points(LATENT_DIM, 20, DEVICE)
 FIXED_NOISE_2 = generate_latent_points(LATENT_DIM, 500, DEVICE)

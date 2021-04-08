@@ -11,7 +11,7 @@ import torchvision.transforms as transforms
 import os
 import argparse
 
-from models.vgg import VGG
+from models.vgg import VGG16
 from utils import progress_bar
 
 
@@ -52,7 +52,8 @@ testloader = torch.utils.data.DataLoader(
 
 # Model
 print('==> Building model...')
-net = VGG('VGG19')
+#net = VGG('VGG19')
+net = VGG16(pretrained=True)
 net = net.to(device)
 
 if device == 'cuda':
