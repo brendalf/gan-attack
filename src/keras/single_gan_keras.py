@@ -165,7 +165,7 @@ def train(g_model, d_model, gan_model, latent_dim, n_epochs=200):
         if (i+1) % 10 == 0:
             summarize_performance(i, g_model, d_model, latent_dim)
 
-BATCH = 100
+BATCH = 32
 HALF_BATCH = int(BATCH / 2)
 
 # size of the latent space
@@ -179,7 +179,7 @@ gan_model = define_gan(g_model, d_model)
 # create generator
 datagen = ImageDataGenerator()
 TRAIN = datagen.flow_from_directory(
-    'data/cifar10_attack_labeled_vgg', 
+    'data/vgg16/dataset_ii_sl', 
     target_size=(32, 32), 
     batch_size=HALF_BATCH,
     shuffle=True)
