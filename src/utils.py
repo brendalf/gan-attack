@@ -7,15 +7,26 @@ class SquashTransform:
     def __call__(self, inputs):
         return 2 * inputs - 1
 
-def encodeOneHot(labels):
-    ret = torch.FloatTensor(labels.shape[0], num_classes)
+def encode_onehot(labels, n_class):
+    ret = torch.FloatTensor(labels.shape[0], n_class)
     ret.zero_()
     ret.scatter_(dim=1, index=labels.view(-1, 1), value=1)
+
     return ret
 
 def generate_latent_points(latent_dim, n_samples, device):
-    return torch.randn(n_samples, latent_dim, 1, 1, device=device)
+    noise = torch.randn(n_samples, latent_dim, 1, 1, device=device)
 
+    return noise 
+
+def generate_conditional_latent_points(latent_dim, n_samples, n_class, device):
+    noise = torch.randn(n_samples, latent_dim).to(device)
+    conditions = encode_onehot(
+        torch.randint(0, n_class, (n_samples, 1)),
+        n_class
+    ).to(device)
+
+    return noise, conditions 
 
 _, term_width = os.popen('stty size', 'r').read().split()
 term_width = int(term_width)
