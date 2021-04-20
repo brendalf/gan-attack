@@ -41,15 +41,18 @@ g_model = torch.load(f'models/gan/g_exp{EXPERIMENT_ID}.pth')
 
 def generate_conditional_latent_points(latent_dim, n_samples, n_class, device):
     noise = torch.randn(n_samples, latent_dim).to(device)
+    labels = torch.randint(0, CLASSES, (n_samples, 1))
+    labels.zero_()
+    labels.fill_(n_class)
+
     conditions = encode_onehot(
-        torch.ones(n_samples) * n_class,
+        labels,
         CLASSES
     ).to(device)
 
     return noise, conditions 
 
 for n in np.arange(CLASSES):
-
     LOGGER.write(f"Generating images from class {n}")
     output_path = os.path.join(FAKESET, str(n))
     LOGGER.write(f'> Output path: {output_path}')

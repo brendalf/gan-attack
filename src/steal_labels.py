@@ -34,7 +34,7 @@ else:
 norm = Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
 
 true_labels = False
-data_folder = 'dataset_gan133'
+data_folder = 'dataset_gan157'
 dataset_folder = f'data/vgg16/{data_folder}'
 stolen_labels_folder = f'data/vgg16/{data_folder}_sl{"_ml" if true_labels else ""}'
 

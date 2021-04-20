@@ -240,7 +240,8 @@ def train_gan(sw, dataloader):
             z1, z2, *_ = torch.split(noise, noise.size(0)//2)
             f1, f2, *_ = torch.split(fake, fake.size(0)//2)
             mode_loss = torch.mean(torch.abs(f2 - f1)) / torch.mean(torch.abs(z2 - z1))
-            mode_loss = LAMBDA_MODE_LOSS / (mode_loss + 1e-5)
+            mode_loss = LAMBDA_MODE_LOSS * mode_loss
+            mode_loss = 1 / (mode_loss + 1e-5)
             # Calculate G's loss based on this output            
             l_valid = binary_criterion(output_valid.view(-1), label)
             l_clf = categorical_criterion(output_clf, conditions) 
@@ -328,11 +329,11 @@ N_CLASS = 10
 BATCH_SIZE = 16
 IMAGE_SIZE = 32
 LATENT_DIM = 100
-LAMBDA_MODE_LOSS = 1 
+LAMBDA_MODE_LOSS = 2 
 LR = 0.0005
 EPOCHS = 1500
-D_LR_DECAY = 0.999
-G_LR_DECAY = 0.999
+D_LR_DECAY = 0.99
+G_LR_DECAY = 0.99
 TARGET_FID = read_stats_file('logs/cifar10_fid.npz')
 DATASET_FID = read_stats_file('logs/dataset_i_sl_fid.npz')
 
