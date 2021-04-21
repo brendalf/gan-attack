@@ -41,9 +41,9 @@ def define_discriminator():
     model.apply(weights_init)
 
     optim = Adam(model.parameters(), lr=LR, amsgrad=True)
-    # lrdecay = ExponentialLR(optimizer=optim, gamma=D_LR_DECAY)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=D_LR_DECAY)
 
-    return model, optim #, lrdecay
+    return model, optim, lrdecay
 
 
 def define_generator():
@@ -51,9 +51,9 @@ def define_generator():
     model.apply(weights_init)
 
     optim = Adam(model.parameters(), lr=LR, amsgrad=True)
-    # lrdecay = ExponentialLR(optimizer=optim, gamma=G_LR_DECAY)
+    lrdecay = ExponentialLR(optimizer=optim, gamma=G_LR_DECAY)
 
-    return model, optim #, lrdecay
+    return model, optim, lrdecay
 
 
 def load_real_samples(n_class):
@@ -158,10 +158,10 @@ def calculate_target_acc(fake_images, sw, epoch, n_class):
 
 
 def train_gan(sw, n_class, dataloader):
-    # d_model, d_optim, d_lrdecay = define_discriminator()
-    # g_model, g_optim, g_lrdecay = define_generator()
-    d_model, d_optim = define_discriminator()
-    g_model, g_optim = define_generator()
+    d_model, d_optim, d_lrdecay = define_discriminator()
+    g_model, g_optim, g_lrdecay = define_generator()
+    # d_model, d_optim = define_discriminator()
+    # g_model, g_optim = define_generator()
     criterion = nn.BCELoss()
 
     G_losses = []
@@ -240,8 +240,8 @@ def train_gan(sw, n_class, dataloader):
             g_optim.step()
 
         # Learning rate decay
-        # d_lrdecay.step()
-        # g_lrdecay.step()
+        d_lrdecay.step()
+        g_lrdecay.step()
 
         # Calculate the mean
         D_x = np.mean(D_x)
@@ -262,8 +262,8 @@ def train_gan(sw, n_class, dataloader):
                 epoch, sw, n_class,
                 errD.item(), errG.item(), mode_loss,
                 D_x, D_G_z1,
-                # g_lrdecay.get_last_lr()[-1], d_lrdecay.get_last_lr()[-1],
-                LR, LR,
+                g_lrdecay.get_last_lr()[-1], d_lrdecay.get_last_lr()[-1],
+                # LR, LR,
                 generate_test(g_model)
             )
 
@@ -322,8 +322,8 @@ IMAGE_SIZE = 32
 LATENT_DIM = 100
 LR = 0.0005
 EPOCHS = 1500
-# D_LR_DECAY = 0.999
-# G_LR_DECAY = 0.999
+D_LR_DECAY = 0.999
+G_LR_DECAY = 0.999
 TARGET_FID = read_stats_file('logs/cifar10_fid.npz')
 DATASET_FID = read_stats_file('logs/dataset_i_sl_fid.npz')
 
@@ -345,20 +345,20 @@ LOGGER.write(f'> Latent Dimension: {LATENT_DIM}')
 LOGGER.write(f'> Device: {DEVICE}')
 
 LOGGER.write('\nGenerator')
-# sample_g_model, sample_g_optim, sample_g_lrdecay = define_generator()
-sample_g_model, sample_g_optim = define_generator()
+sample_g_model, sample_g_optim, sample_g_lrdecay = define_generator()
+# sample_g_model, sample_g_optim = define_generator()
 LOGGER.write(sample_g_model)
 LOGGER.write(sample_g_optim)
-# LOGGER.write(sample_g_lrdecay.__class__.__name__)
-# LOGGER.write(f'Gamma: {G_LR_DECAY}')
+LOGGER.write(sample_g_lrdecay.__class__.__name__)
+LOGGER.write(f'Gamma: {G_LR_DECAY}')
 
 LOGGER.write('\nDiscriminator')
-# sample_d_model, sample_d_optim, sample_d_lrdecay = define_discriminator()
-sample_d_model, sample_d_optim = define_discriminator()
+sample_d_model, sample_d_optim, sample_d_lrdecay = define_discriminator()
+# sample_d_model, sample_d_optim = define_discriminator()
 LOGGER.write(sample_d_model)
 LOGGER.write(sample_d_optim)
-# LOGGER.write(sample_d_lrdecay.__class__.__name__)
-# LOGGER.write(f'Gamma: {D_LR_DECAY}')
+LOGGER.write(sample_d_lrdecay.__class__.__name__)
+LOGGER.write(f'Gamma: {D_LR_DECAY}')
 
 del sample_g_model, sample_d_model, sample_g_optim, sample_d_optim #, sample_g_lrdecay, sample_d_lrdecay
 
