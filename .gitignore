@@ -102,9 +102,8 @@ ENV/
 .vscode/
 
 data/
-models/
 notebooks/runs/
-
+*.pth
 logs/
 
 checkpoint/
