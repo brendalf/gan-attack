@@ -150,11 +150,12 @@ def calculate_target_acc(images, conditions, sw, epoch):
     # labels = labels.to(DEVICE)
 
     norm = Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-
+    images = norm(images)
+    
     with torch.no_grad(): # turn off grad
         target.eval()
 
-        outputs = target(norm(images))
+        outputs = target(images)
         _, predicted = outputs.max(1)
         correct = predicted.eq(labels).sum().item()
 
