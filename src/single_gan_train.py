@@ -10,6 +10,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torch.optim.lr_scheduler import ExponentialLR
+from torchvision.transforms.transforms import Normalize
 
 from torchvision.utils import make_grid
 from torchvision.datasets import ImageFolder
@@ -148,10 +149,12 @@ def calculate_target_acc(images, conditions, sw, epoch):
     _, labels = conditions.max(1)
     # labels = labels.to(DEVICE)
 
+    norm = Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+
     with torch.no_grad(): # turn off grad
         target.eval()
 
-        outputs = target(images)
+        outputs = target(norm(images))
         _, predicted = outputs.max(1)
         correct = predicted.eq(labels).sum().item()
 
