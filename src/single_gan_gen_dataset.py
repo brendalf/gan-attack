@@ -11,6 +11,7 @@ from torchvision.utils import save_image
 from experiment import ExperimentLog
 from utils import encode_onehot
 
+
 EXPERIMENT_ID = input("Experiment ID: ")
 EXPERIMENT_PATH = f'logs/cifar10/single_gan/experiment_{EXPERIMENT_ID}'
 
@@ -24,7 +25,8 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 CLASSES = 10
 TRAINING_SIZE = 900
 MULTIPLIER_TRAINING_SIZE = 10
-FAKESET = f"data/vgg16/dataset_gan{EXPERIMENT_ID}/"
+FAKESET = f"data/cifar10.vgg16/dataset_gan{EXPERIMENT_ID}/"
+
 if not os.path.exists(FAKESET):
     os.mkdir(FAKESET)
 

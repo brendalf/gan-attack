@@ -34,7 +34,7 @@ def evaluate_network(model, dataloader, total):
     print('Micro Average: {:.6f}'.format(micro_avg))
     print('Macro Average: {:.6f}\n'.format(macro_avg))
 
-def evaluate_network_with_classes(model, dataloader, total):
+def evaluate_network_with_classes(model, dataloader, total, n_class):
     def micro_avg_class(x):
         results_class = results[np.where(results[:, 0] == x)]
         aux = np.where(results_class[:, 1] == x)
@@ -75,6 +75,6 @@ def evaluate_network_with_classes(model, dataloader, total):
     print('Average: {:.2f}% ({:d} images)'.format(100. * (correct/total), total))
     print(
         'Micro Average: {:.2f}% ['.format(100 * micro_avg),
-        ", ".join(map(acc_by_class, np.arange(10))), "]", sep=""
+        ", ".join(map(acc_by_class, np.arange(n_class))), "]", sep=""
     )
     print('Macro Average: {:.2f}%'.format(100 * macro_avg))

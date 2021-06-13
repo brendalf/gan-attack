@@ -7,6 +7,10 @@ class SquashTransform:
     def __call__(self, inputs):
         return 2 * inputs - 1
 
+class InvertTransform:
+    def __call__(self, inputs):
+        return 1 - inputs
+
 def encode_onehot(labels, n_class):
     ret = torch.FloatTensor(labels.shape[0], n_class)
     ret.zero_()

@@ -14,15 +14,16 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 np.set_printoptions(suppress=True)
 
-dataset_folder = 'data/imagenet'
-new_folder = 'data/dataset_vi'
+dataset_folder = '/media/brendalf/storage-ext4/imagenet/2012'
+new_folder = 'data/dataset_iii_256x256'
 
 dataset = ImageFolder(
     root=dataset_folder, 
     transform=Compose([
-    Resize((32, 32)),
-    ToTensor(),
-]))
+        Resize((256, 256)),
+        ToTensor(),
+    ])
+)
 loader = DataLoader(dataset, shuffle=True, batch_size=1)
 
 os.makedirs(new_folder, exist_ok=True)

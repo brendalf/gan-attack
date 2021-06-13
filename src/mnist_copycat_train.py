@@ -37,13 +37,14 @@ SIZE = 32
 # Data
 print('==> Preparing data..')
 transform_train = transforms.Compose([
-    # transforms.Resize((SIZE, SIZE)),
+    transforms.Resize((SIZE, SIZE)),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
 ])
 
 transform_test = transforms.Compose([
-    # transforms.Resize((SIZE, SIZE)),
+    transforms.Resize((SIZE, SIZE)),
+    transforms.Grayscale(num_output_channels=3),
     transforms.ToTensor(),
 ])
 
@@ -52,8 +53,8 @@ trainset = torchvision.datasets.ImageFolder(
 trainloader = torch.utils.data.DataLoader(
     trainset, batch_size=32, shuffle=True, num_workers=2)
 
-testset = torchvision.datasets.SVHN(
-    root='./data', split="test", download=True, transform=transform_test)
+testset = torchvision.datasets.MNIST(
+    root='./data', train=False, download=True, transform=transform_test)
 # testset = torchvision.datasets.ImageFolder(
     # root="./data/FER7/TD/", transform=transform_test)
 testloader = torch.utils.data.DataLoader(
@@ -72,7 +73,7 @@ if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint...')
     #assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load(f'./models/copycat/svhn.vgg16/{model_name}.pth')
+    checkpoint = torch.load(f'./models/copycat/mnist.vgg16/{model_name}.pth')
     net.load_state_dict(checkpoint['net'])
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
@@ -137,7 +138,7 @@ def test(epoch):
         }
         #if not os.path.isdir('checkpoint'):
         #    os.mkdir('checkpoint')
-        torch.save(state, f'./models/copycat/svhn.vgg16/{model_name}.pth')
+        torch.save(state, f'./models/copycat/mnist.vgg16/{model_name}.pth')
         best_acc = acc
 
 for epoch in range(start_epoch, start_epoch+50):

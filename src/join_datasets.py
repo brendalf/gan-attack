@@ -14,10 +14,10 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 np.set_printoptions(suppress=True)
 
-dataset1_folder = 'data/vgg16/dataset_ii_sl'
-dataset2_folder = 'data/vgg16/dataset_gan133_sl'
+dataset1_folder = 'data/mnist.vgg16/dataset_iv_sl'
+dataset2_folder = 'data/mnist.vgg16/dataset_gan183_sl'
 
-new_folder = "data/vgg16/dataset_ii_sl+dataset_gan133_sl"
+new_folder = "data/mnist.vgg16/dataset_iv_sl+dataset_gan183_sl"
 
 dataset1 = ImageFolder(
     root=dataset1_folder,

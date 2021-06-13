@@ -334,7 +334,7 @@ LOGGER.write(f"Random Seed: {manualSeed}")
 DEVICE = torch.device('cuda' if torch.cuda.is_available else 'cpu')
 
 # Parameters
-DATAROOT = 'data/mnist.vgg16/mnist_pd_ol_1000_sl/'
+DATAROOT = 'data/mnist.vgg16/dataset_iv_sl/'
 WORKERS = 4
 N_CLASS = 10 
 BATCH_SIZE = 16
@@ -346,7 +346,7 @@ EPOCHS = 500
 D_LR_DECAY = 0.99
 G_LR_DECAY = 0.99
 TARGET_FID = read_stats_file('logs/fid/mnist_od_fid.npz')
-DATASET_FID = read_stats_file('logs/fid/mnist_pd_sl_fid.npz')
+DATASET_FID = read_stats_file('logs/fid/mnist_npd_sl_fid.npz')
 
 TEST_FIXED_NOISE, TEST_FIXED_CONDITIONS = generate_conditional_latent_points(LATENT_DIM, 20, N_CLASS, DEVICE)
 

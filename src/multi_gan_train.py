@@ -228,10 +228,9 @@ def train_gan(sw, n_class, dataloader):
             z1, z2, *_ = torch.split(noise, noise.size(0)//2)
             f1, f2, *_ = torch.split(fake, fake.size(0)//2)
             mode_loss = torch.mean(torch.abs(f2 - f1)) / torch.mean(torch.abs(z2 - z1))
-            # mode_loss = mode_loss / 2
             mode_loss = 1 / (mode_loss + 1e-5)
             # Calculate G's loss based on this output            
-            errG = criterion(output, label) + mode_loss
+            errG = criterion(output, label) + (5 * mode_loss)
             loss_G = errG + mode_loss
             # Calculate gradients for G
             loss_G.backward()

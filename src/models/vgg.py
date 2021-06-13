@@ -29,7 +29,7 @@ class VGG19Adaptada(nn.Module):
         layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
         return nn.Sequential(*layers)
 
-def VGG16(out_features, pretrained=False):
+def VGG16(out_features=10, pretrained=False):
     net = vgg16(pretrained=pretrained)
     net.classifier[-1] = nn.Linear(in_features=4096, out_features=out_features, bias=True)
     return net
